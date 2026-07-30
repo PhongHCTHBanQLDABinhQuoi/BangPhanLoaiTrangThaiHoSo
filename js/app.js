@@ -1286,11 +1286,19 @@ async function loadLive(force){
   }
 
   try {
-    const res = await fetch('/api/data' + (force ? '?force=1' : ''), { cache: 'no-store' });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const d = await res.json();
+    let d = null;
+    try {
+      const res = await fetch('/api/data' + (force ? '?force=1' : ''), { cache: 'no-store' });
+      if(res.ok) d = await res.json();
+    } catch(e){}
+
     if(!d || !d.headers || !d.rows || d.rows.length === 0){
-      throw new Error((d && d.error) || 'Máy chủ đang chuẩn bị dữ liệu...');
+      const resStatic = await fetch('cache_payload.json');
+      if(resStatic.ok) d = await resStatic.json();
+    }
+
+    if(!d || !d.headers || !d.rows || d.rows.length === 0){
+      throw new Error((d && d.error) || 'Không thể nạp dữ liệu...');
     }
 
     try { localStorage.setItem('kpi_cache_v2', JSON.stringify(d)); } catch(e){}
