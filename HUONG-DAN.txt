@@ -1,0 +1,67 @@
+HUONG DAN SU DUNG
+DASHBOARD HO SO PHAP LY - KET NOI TRUC TIEP BASE WORKFLOW
+Ban Quan ly du an DTXD phuong Binh Quoi - Thanh Da
+==============================================================
+
+1. NO LAM GI?
+   - May tinh nay chay mot "may chu nho". May chu tu goi thang API Base
+     Workflow, lay toan bo ho so theo thoi gian thuc, roi hien thi thanh
+     bang theo doi (giong file index.html cua sep).
+   - MOI thiet bi (dien thoai, may tinh khac) CUNG MANG WiFi/LAN deu mo
+     duoc bang cach vao dia chi web hien tren man hinh.
+   - Du lieu chi cap nhat khi bam "Lam moi ngay" (hoac tai lai trang web).
+
+2. CAN GI TRUOC?
+   - May chay phai co INTERNET (de goi Base Workflow).
+   - Cai Python 3: https://www.python.org/downloads/
+       >> Khi cai NHO TICH vao o  "Add Python to PATH"  <<
+   - Cac thiet bi xem chi can CUNG WiFi voi may nay (khong can internet).
+
+3. CHAY NHU THE NAO?
+   - Bam DUP vao file:  start.bat
+   - Lan dau Windows hien hop thoai "Windows Defender Firewall":
+       >> Bam "Allow access" / "Cho phep truy cap"  <<
+       (Neu lo bam Cancel: vao Control Panel > Windows Defender Firewall >
+        Allow an app... > tim Python > tich ca Private va Public.)
+   - Man hinh se hien 2 dia chi, vi du:
+        May nay            :  http://localhost:8080
+        Dien thoai/may khac :  http://192.168.1.25:8080
+
+4. XEM TREN DIEN THOAI / MAY KHAC
+   - Bao dam thiet bi do noi CUNG WiFi voi may chay may chu.
+   - Mo trinh duyet, go dung dia chi kieu  http://192.168.1.25:8080
+     (thay bang so IP hien tren man hinh may chu).
+
+5. TAT MAY CHU
+   - Dong cua so mau den (Command Prompt) dang chay, hoac bam Ctrl + C.
+   - Tat may chu thi cac thiet bi khac se khong xem duoc nua.
+
+6. DOI CONG (PORT) NEU BI TRUNG
+   - Mac dinh dung cong 8080. Neu bao loi "Address already in use":
+     mo file  server.py  bang Notepad, tim dong:
+        PORT = 8080
+     doi thanh 8000 (hoac 5000), luu lai, chay start.bat lai.
+
+7. AN TOAN - LUU Y QUAN TRONG
+   - File server.py co chua TOKEN Base Workflow. KHONG gui file server.py
+     cho nguoi ngoai. Chi chay tren may cua co quan.
+   - Dia chi web nay CHI hoat dong trong mang noi bo (LAN). Nguoi ngoai
+     mang khong vao duoc, tru khi ban cau hinh them (khong khuyen khich).
+   - Token o phia may chu, KHONG lo ra trinh duyet nguoi xem -> an toan hon
+     so voi nhung token vao thang trong trang web.
+
+8. KHONG THAY DU LIEU?
+   - Kiem tra may chu co INTERNET khong (thu mo google.com).
+   - Neu Base doi token, mo server.py sua dong  ACCESS_TOKEN_V2 = "..."
+     bang token moi (lay cung cho voi token trong Google Apps Script).
+   - Thanh trang thai tren web se ghi ro loi neu goi Base that bai.
+
+9. FILE TRONG THU MUC NAY
+   - start.bat      : bam dup de chay may chu.
+   - server.py      : ma nguon may chu (goi Base, phuc vu web).
+   - index.html     : giao dien dashboard (cua sep, da dau noi du lieu song).
+   - libs/          : thu vien bieu do (may chu tu tai ve lan dau).
+   - HUONG-DAN.txt  : file nay.
+
+==============================================================
+Moi thac mac ky thuat, giu nguyen cau truc thu muc nay khi di chuyen.

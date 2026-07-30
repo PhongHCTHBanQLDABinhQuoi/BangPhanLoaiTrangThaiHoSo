@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title></title>
+<meta name="description" content="Hệ thống Báo cáo & Điều hành KPI Hồ sơ Pháp lý — Đánh giá Tiến độ Cán bộ Theo Tháng — Base Workflow">
+
+<!-- Typography Fonts: Inter + JetBrains Mono (Dovetail Spec) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Dovetail CSS System -->
+<link rel="stylesheet" href="/css/dovetail.css">
+
+<!-- Offline/Online Libraries -->
+<script src="/libs/xlsx.full.min.js"></script>
+<script>window.XLSX||document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/scr'+'ipt>')</script>
+<script src="/libs/chart.umd.min.js"></script>
+<script>window.Chart||document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/scr'+'ipt>')</script>
+<script src="/libs/chartjs-plugin-datalabels.min.js"></script>
+<script>window.ChartDataLabels||document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"><\/scr'+'ipt>')</script>
+</head>
+<body>
+
+<!-- ═══ TOPBAR NAVIGATION ═══ -->
+<nav class="topbar">
+  <div class="logo">
+    <div class="icon-box">⚡</div>
+    <span>DOVETAIL <em>EXECUTIVE BI</em></span>
+  </div>
+  <span class="sub-title">BQLDA ĐTXD Phường Bình Quới – Thanh Đa</span>
+  <div class="spacer"></div>
+  <span class="conn" id="connBadge"><span class="dot on" id="connDot"></span><span id="connText">⚡ Kết nối trực tiếp Base Workflow API</span></span>
+  <div class="actions">
+    <button class="btn btn-ghost" id="btnPrint">🖨️ In Báo Cáo</button>
+    <button class="btn btn-accent" id="btnRefresh">⚡ Đồng Bộ Base Workflow</button>
+  </div>
+</nav>
+
+<!-- ═══ NAVIGATION TABS ═══ -->
+<div class="nav-tabs" id="navTabs">
+  <button class="tab-btn active" data-tab="tab-overview">📊 1. Tổng Quan KPI <span class="badge-count" id="countAll">0</span></button>
+  <button class="tab-btn" data-tab="tab-monthly-kpi">📈 2. Đánh Giá KPI Cán Bộ Theo Tháng</button>
+  <button class="tab-btn" data-tab="tab-legal">⚖️ 3. Pháp Lý &amp; Hiện Trạng</button>
+  <button class="tab-btn" data-tab="tab-team">👥 4. Khối Lượng Theo Tổ</button>
+  <button class="tab-btn" data-tab="tab-sla">⏱️ 5. Tiến Độ &amp; Trễ Hạn <span class="badge-count" id="countOverdue" style="color:var(--red)">0</span></button>
+  <button class="tab-btn" data-tab="tab-table">📋 6. Danh Sách Chi Tiết</button>
+</div>
+
+<main class="main">
+
+<div id="app">
+
+  <!-- Toolbar & Filters -->
+  <div class="toolbar">
+    <span class="fbadge live" id="fileName">● BASE LIVE</span>
+    <button class="btn btn-ghost" id="btnQuickOverdue" style="color:var(--red);border-color:rgba(239,68,68,0.4)">🔴 Chỉ xem Trễ Hạn SLA</button>
+    <button class="btn btn-ghost" id="btnQuickNoGCN" style="color:#c084fc;border-color:rgba(139,92,246,0.4)">⚠️ Chỉ xem Không GCN</button>
+    <button class="btn btn-ghost" id="btnResetFilters">🔄 Xóa Toàn Bộ Lọc</button>
+    <span style="flex:1"></span>
+    <span id="metaInfo" style="font-size:12px;color:var(--color-ash);font-family:var(--font-mono)"></span>
+    <button class="btn btn-blue" id="btnExport">⬇️ Xuất Excel Dữ Liệu Lọc</button>
+  </div>
+
+  <!-- Filters Panel -->
+  <div class="filter-wrap" id="filterBar"></div>
+  <div class="active-note" id="activeNote"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 1: TỔNG QUAN KPI (EXECUTIVE OVERVIEW)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-overview">
+    <div class="sec"><span class="sec-eyebrow">EXECUTIVE METRICS</span><h2 class="sec-title">📋 Chỉ Số KPI Tổng Quan</h2></div>
+    <div class="hero" id="kpiBar"></div>
+
+    <div class="sec"><span class="sec-eyebrow">AUTOMATED INTELLIGENCE</span><h2 class="sec-title">💡 Nhận Xét &amp; Phân Tích Tự Động</h2></div>
+    <div class="insights" id="insightsBox"></div>
+
+    <div class="sec" id="funnelSec"><span class="sec-eyebrow">PIPELINE FUNNEL STAGES</span><h2 class="sec-title">📌 Tiến Độ Phân Bổ Quy Trình 8 Giai Đoạn</h2></div>
+    <div class="pipeline" id="funnelCard">
+      <div class="hdr"><h3 id="funnelTitle">Tiến độ hồ sơ theo 8 giai đoạn bồi thường</h3><span class="note">Bấm vào từng dòng để lọc nhanh</span></div>
+      <div id="funnelRows"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 2: ĐÁNH GIÁ KPI CÁN BỘ THEO THÁNG (MONTHLY PERFORMANCE)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="tab-monthly-kpi">
+    <div class="sec"><span class="sec-eyebrow">MONTHLY EVALUATION ENGINE</span><h2 class="sec-title">📈 Đánh Giá Tiến Độ &amp; Năng Suất Cán Bộ Theo Tháng</h2></div>
+    
+    <!-- Controls -->
+    <div class="month-picker-bar">
+      <label for="monthPickerSelect">📅 Chọn Tháng Báo Cáo:</label>
+      <select id="monthPickerSelect"></select>
+      <span style="font-size:12.5px;color:var(--color-ash);font-family:var(--font-mono)" id="monthSummaryNote"></span>
+    </div>
+
+    <!-- Monthly Summary Stats -->
+    <div class="hero" id="monthlyHeroStats"></div>
+
+    <!-- Monthly Chart Comparison -->
+    <div class="cgrid" id="monthlyChartGrid"></div>
+
+    <!-- Detailed Monthly Evaluation Table -->
+    <div class="sec"><span class="sec-eyebrow">STAFF EVALUATION MATRIX</span><h2 class="sec-title">🏆 Bảng Đánh Giá Chi Tiết Tiến Độ Cán Bộ Trong Tháng</h2></div>
+    <div class="tbl-wrap">
+      <div class="tscroll">
+        <table class="dt" id="monthlyStaffTable">
+          <thead>
+            <tr>
+              <th>Cán Bộ Phụ Trách</th>
+              <th>Tổ / Phòng</th>
+              <th>Số Lượt Chuyển Bước Trong Tháng</th>
+              <th>Số Hồ Sơ Tiếp Nhận/Giữ</th>
+              <th>Thời Gian Xử Lý TB</th>
+              <th>Tỷ Lệ Đúng Hạn SLA</th>
+              <th>Xếp Loại Năng Suất KPI</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 3: PHÁP LÝ & HIỆN TRẠNG (LEGAL RISK MATRIX)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="tab-legal">
+    <div class="sec"><span class="sec-eyebrow">RISK &amp; LAND CLASSIFICATION</span><h2 class="sec-title">⚖️ Cơ Cấu Phân Loại Pháp Lý &amp; Đất Đai</h2></div>
+    <div class="cgrid" id="donutGrid"></div>
+
+    <div class="sec"><span class="sec-eyebrow">HEATMAP PIVOT MATRIX</span><h2 class="sec-title">🔍 Ma Trận Đất Đai: Hiện Trạng × Pháp Lý</h2></div>
+    <div class="cgrid" id="pivotGrid"></div>
+
+    <div class="sec"><span class="sec-eyebrow">FULL LEGAL HIERARCHY MATRIX</span><h2 class="sec-title">📋 Bảng Tổng Hợp Phân Loại Pháp Lý Hồ Sơ Thực Hiện Theo Tổ &amp; Phòng</h2></div>
+    <div class="tbl-wrap" style="margin-bottom:28px">
+      <div class="tscroll">
+        <table class="dt legal-hierarchy-table" id="legalHierarchyTable">
+          <thead>
+            <tr>
+              <th style="width:1%;white-space:nowrap;text-align:left">STT / DANH MỤC PHÂN LOẠI PHÁP LÝ HỒ SƠ</th>
+              <th style="width:90px;text-align:center">TỔNG CỘNG</th>
+              <th style="width:115px;text-align:center">Tổ NV BT 1 (KP17)</th>
+              <th style="width:115px;text-align:center">Tổ NV BT 2 (KP18)</th>
+              <th style="width:115px;text-align:center">Tổ NV BT 3 (KP19)</th>
+              <th style="width:100%;min-width:250px"></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec"><span class="sec-eyebrow">EXECUTIVE COMPLIANCE SCORECARD</span><h2 class="sec-title">📋 Bảng Phân Loại &amp; Đánh Giá Mức Độ Rủi Ro Pháp Lý Đất Đai</h2></div>
+    <div class="tbl-wrap">
+      <div class="tscroll">
+        <table class="dt" id="legalRiskTable">
+          <thead>
+            <tr>
+              <th>Cấp Độ Rủi Ro</th>
+              <th>Phân Loại Pháp Lý Đất Đai</th>
+              <th>Số Lượng Hồ Sơ</th>
+              <th>Tỷ Lệ %</th>
+              <th>Đủ Điều Kiện Bồi Thường</th>
+              <th>Đề Xuất Hướng Xử Lý Kỹ Thuật</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 4: TỔ NV & CÁN BỘ (TEAM & WORKLOAD)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="tab-team">
+    <div class="sec"><span class="sec-eyebrow">TEAM WORKLOAD DISTRIBUTION</span><h2 class="sec-title">👥 Khối Lượng Hồ Sơ Theo Tổ / Phòng</h2></div>
+    <div class="cgrid" id="teamCrossGrid"></div>
+
+    <div class="sec"><span class="sec-eyebrow">STAFF WORKLOAD RANKING</span><h2 class="sec-title">🏆 Top 15 Cán Bộ Phụ Trách Nhiều Hồ Sơ Nhất</h2></div>
+    <div class="cgrid" id="staffGrid"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 5: TIẾN ĐỘ & TRỄ HẠN (SLA & BOTTLENECK)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="tab-sla">
+    <div class="sec"><span class="sec-eyebrow">SLA BOTTLENECK TRACKER</span><h2 class="sec-title">⏱️ Theo Dõi Tiến Độ &amp; Hồ Sơ Quá Hạn</h2></div>
+    <div class="cgrid" id="slaTrendGrid"></div>
+
+    <div class="sec"><span class="sec-eyebrow">STAGE SLA VELOCITY MATRIX</span><h2 class="sec-title">📊 Bảng Phân Tích Điểm Nghẽn Tiến Độ 8 Giai Đoạn</h2></div>
+    <div class="tbl-wrap" style="margin-bottom:28px">
+      <div class="tscroll">
+        <table class="dt" id="stageBottleneckTable">
+          <thead>
+            <tr>
+              <th>Giai Đoạn Quy Trình</th>
+              <th>Tổng Số Hồ Sơ Tồn Đọng</th>
+              <th>Số Hồ Sơ Trễ Hạn SLA</th>
+              <th>Tỷ Lệ Trễ Hạn (%)</th>
+              <th>Thời Gian Xử Lý TB</th>
+              <th>Mức Độ Cảnh Báo Quy Trình</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec"><span class="sec-eyebrow">OVERDUE ACTION LIST</span><h2 class="sec-title">🔴 Danh Sách Hồ Sơ Cần Đôn Đốc (Trễ Hạn SLA)</h2></div>
+    <div class="tbl-wrap">
+      <div class="tscroll"><table class="dt" id="overdueTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 6: DANH SÁCH CHI TIẾT (FULL RECORDS TABLE)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="tab-table">
+    <div class="sec"><span class="sec-eyebrow">FULL INTERACTIVE LEDGER</span><h2 class="sec-title">📋 Tra Cứu &amp; Quản Lý Hồ Sơ Chi Tiết</h2></div>
+    <div class="tbl-wrap">
+      <div class="tbl-hdr">
+        <h3>Dữ liệu hồ sơ <span id="rowCount"></span></h3>
+        <input type="search" id="tableSearch" style="min-width:380px" placeholder="🔍 Tìm kiếm mọi thứ (Mã hồ sơ, Tên hộ dân, Tổ/Phòng, Số tờ, Số thửa, Pháp lý, Cán bộ...)">
+      </div>
+      <div class="tscroll"><table class="dt" id="dataTable"><thead></thead><tbody></tbody></table></div>
+      <div class="pager">
+        <button class="btn" id="prevPage">‹ Trước</button>
+        <span id="pageInfo"></span>
+        <button class="btn" id="nextPage">Sau ›</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</main>
+
+<!-- ═══ MODAL DETAIL POPUP DRAWER ═══ -->
+<div class="modal-overlay hidden" id="detailModal">
+  <div class="modal-box">
+    <button class="close-btn" id="modalClose">✕</button>
+    <h2 id="modalTitle">Chi Tiết Hồ Sơ</h2>
+    <div class="meta-sub" id="modalSub"></div>
+    <div class="grid-detail" id="modalGrid"></div>
+    <div class="timeline-box">
+      <h3>📜 Lịch Sử Chuyển Bước Cán Bộ (Base Workflow Timeline)</h3>
+      <ul class="timeline-list" id="modalTimeline"></ul>
+    </div>
+    <div class="modal-actions">
+      <a href="#" target="_blank" class="btn btn-blue" id="modalLinkBase">🔗 Mở Trên Base Workflow</a>
+      <button class="btn" id="modalBtnClose">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<footer>Bảng Điều Hành KPI Hồ Sơ Pháp Lý · Dovetail Blueprint Control Room · Base Workflow Engine</footer>
+
+<!-- ═══ PRINT REPORT TEMPLATE (CHỈ HIỂN THỊ KHI IN BÁO CÁO) ═══ -->
+<div id="printReportWrapper" class="print-report-wrapper">
+  <h2 class="print-main-title">BẢNG TỔNG HỢP PHÂN LOẠI PHÁP LÝ HỒ SƠ BỒI THƯỜNG THỰC HIỆN THEO TỔ NGHIỆP VỤ</h2>
+  <div class="print-sub-meta" id="printReportMeta">Dự án: Khu đô thị mới Bình Quới – Thanh Đa </div>
+  
+  <table class="print-table" id="printHierarchyTable">
+    <thead>
+      <tr>
+        <th style="width:1%;white-space:nowrap;text-align:left">STT / DANH MỤC PHÂN LOẠI PHÁP LÝ HỒ SƠ</th>
+        <th style="width:75px;text-align:center">TỔNG CỘNG</th>
+        <th style="width:95px;text-align:center">Tổ NV BT 1 (KP17)</th>
+        <th style="width:95px;text-align:center">Tổ NV BT 2 (KP18)</th>
+        <th style="width:95px;text-align:center">Tổ NV BT 3 (KP19)</th>
+        <th style="width:100%;min-width:200px"></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot></tfoot>
+  </table>
+
+  <div class="print-signatures">
+    <div class="sig-col">
+      <strong>NGƯỜI LẬP BÁO CÁO</strong>
+      <div class="sig-space"></div>
+    </div>
+    <div class="sig-col">
+      <strong>PHỤ TRÁCH PHÒNG</strong>
+      <div class="sig-space"></div>
+    </div>
+    <div class="sig-col">
+      <strong>GIÁM ĐỐC </strong>
+      <div class="sig-space"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Application Main JS Module -->
+<script src="/js/app.js"></script>
+</body>
+</html>
