@@ -640,4 +640,14 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in ("--sync", "--once"):
+        print("⚡ [SYNC ONLY] Đang nạp dữ liệu từ Base Workflow API...")
+        try:
+            p = build_payload()
+            save_disk_cache(p)
+            print("⚡ [SYNC OK] Đã cập nhật cache_payload.json thành công (%d hồ sơ)!" % len(p.get("rows", [])))
+            sys.exit(0)
+        except Exception as e:
+            print("❌ [SYNC ERROR]: %s" % e)
+            sys.exit(1)
     main()
