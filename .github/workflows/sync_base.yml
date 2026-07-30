@@ -1,0 +1,38 @@
+name: Tự động đồng bộ dữ liệu Base Workflow
+
+on:
+  schedule:
+    # Tự động chạy mỗi 30 phút (UTC)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    # Cho phép bấm nút chạy thủ công bất cứ lúc nào trên GitHub
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Khởi tạo môi trường Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Đồng bộ dữ liệu từ Base Workflow API
+        run: python server.py --sync
+
+      - name: Cam kết & Cập nhật đĩa cache mới lên GitHub
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add cache_payload.json
+          if git diff --staged --quiet; then
+            echo "Dữ liệu không có thay đổi mới."
+          else
+            git commit -m "⚡ Tự động đồng bộ dữ liệu Base Workflow [skip ci]"
+            git push
+          fi
