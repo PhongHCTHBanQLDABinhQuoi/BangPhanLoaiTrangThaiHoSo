@@ -1342,3 +1342,141 @@ footer {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   OPTIMIZATION FOR 1024 x 768 & COMPACT DISPLAY RESOLUTIONS
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 1024px), (max-height: 768px) {
+  /* Topbar & Nav Header */
+  .topbar {
+    height: 48px;
+    padding: 0 16px;
+    gap: 10px;
+  }
+  .topbar .logo { font-size: 14px; }
+  .topbar .logo .icon-box { width: 24px; height: 24px; font-size: 11px; }
+  .topbar .sub-title { font-size: 11px; }
+  .topbar .actions .btn { padding: 5px 10px; font-size: 11.5px; }
+
+  .nav-tabs {
+    padding: 0 16px;
+  }
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  /* Main Container */
+  .main {
+    padding: 12px 14px 40px;
+    max-width: 100%;
+  }
+
+  .toolbar {
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+  .toolbar .btn {
+    padding: 5px 10px;
+    font-size: 11.5px;
+  }
+
+  .filter-wrap {
+    padding: 12px 14px;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+  .filter-wrap label { font-size: 10px; }
+  .filter-wrap select { font-size: 11.5px; padding: 5px 8px; }
+
+  /* Tab 1 Viewport Wallboard Height Budget */
+  #tab-overview {
+    height: calc(100vh - 130px);
+    max-height: calc(100vh - 130px);
+    min-height: 500px;
+  }
+
+  .hero-compact .hero-card {
+    padding: 8px 12px;
+  }
+  .hero-compact .hero-card .value {
+    font-size: 20px;
+  }
+  .hero-compact .hero-card .value small {
+    font-size: 11px;
+  }
+  .hero-compact .hero-card .label {
+    font-size: 10.5px;
+    margin-top: 2px;
+  }
+
+  .wallboard-grid {
+    grid-template-columns: 29% 42% 29%;
+    gap: 8px;
+  }
+
+  .wallboard-card {
+    padding: 10px 12px;
+  }
+  .wallboard-card h3 {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .insights-compact .insight-item {
+    padding: 6px 10px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .pipeline-compact .funnel-row {
+    grid-template-columns: 110px 1fr 65px;
+    gap: 6px;
+    padding: 3px 4px;
+    font-size: 10.5px;
+  }
+  .pipeline-compact .f-lbl { font-size: 10.5px; }
+  .pipeline-compact .f-bar-wrap { height: 10px; }
+  .pipeline-compact .f-val { font-size: 10px; }
+
+  /* Section Titles */
+  .sec { margin: 20px 0 12px; }
+  .sec-title { font-size: 18px; }
+  .sec-eyebrow { font-size: 10.5px; }
+
+  /* Tables Optimization */
+  .tbl-wrap {
+    padding: 14px 16px;
+  }
+  .tbl-hdr h3 { font-size: 16px; }
+  .tscroll {
+    max-height: calc(100vh - 220px);
+  }
+
+  table.dt {
+    font-size: 11.5px;
+    min-width: 800px;
+  }
+  table.dt th {
+    padding: 8px 10px;
+    font-size: 10.5px;
+  }
+  table.dt td {
+    padding: 8px 10px;
+  }
+  .badge {
+    padding: 2px 6px;
+    font-size: 10.5px;
+  }
+  .user-badge .avatar {
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+  }
+  .mini-prog {
+    min-width: 90px;
+  }
+  .mini-prog .lbl {
+    font-size: 10.5px;
+  }
+}
+

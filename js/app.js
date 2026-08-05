@@ -354,7 +354,12 @@ Chart.defaults.font.family = "'Inter', ui-sans-serif, system-ui, sans-serif";
 Chart.defaults.font.size = 11.5;
 Chart.defaults.color = '#a7a7a7';
 Chart.defaults.borderColor = 'rgba(49, 49, 49, 0.4)';
-Chart.defaults.plugins.datalabels.display = false;
+Chart.defaults.plugins.datalabels.display = true;
+Chart.defaults.plugins.datalabels.color = '#ffffff';
+Chart.defaults.plugins.datalabels.font = { family: 'JetBrains Mono', weight: '600', size: 9.5 };
+Chart.defaults.plugins.datalabels.formatter = (val) => val ? fmt(val) : '';
+Chart.defaults.plugins.datalabels.textStrokeColor = 'rgba(0,0,0,0.8)';
+Chart.defaults.plugins.datalabels.textStrokeWidth = 2;
 Chart.defaults.plugins.tooltip.backgroundColor = '#141414';
 Chart.defaults.plugins.tooltip.borderColor = '#313131';
 Chart.defaults.plugins.tooltip.borderWidth = 1;
@@ -510,7 +515,15 @@ function renderOverviewCharts(data){
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6, font: { size: 10.5 } } },
+          legend: { position: 'bottom', labels: { boxWidth: 10, padding: 4, font: { size: 10 } } },
+          datalabels: {
+            display: true,
+            color: '#ffffff',
+            font: { family: 'JetBrains Mono', weight: '700', size: 10 },
+            formatter: (val) => val ? `${fmt(val)}\n(${pct(val, T)})` : '',
+            textStrokeColor: 'rgba(0,0,0,0.8)',
+            textStrokeWidth: 2
+          },
           tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} hs (${pct(ctx.raw, T)})` } }
         }
       }
@@ -544,7 +557,15 @@ function renderOverviewCharts(data){
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6, font: { size: 10.5 } } },
+          legend: { position: 'bottom', labels: { boxWidth: 10, padding: 4, font: { size: 10 } } },
+          datalabels: {
+            display: true,
+            color: '#ffffff',
+            font: { family: 'JetBrains Mono', weight: '700', size: 10 },
+            formatter: (val) => val ? `${fmt(val)}\n(${pct(val, T)})` : '',
+            textStrokeColor: 'rgba(0,0,0,0.8)',
+            textStrokeWidth: 2
+          },
           tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} hs (${pct(ctx.raw, T)})` } }
         }
       }
@@ -560,7 +581,7 @@ function renderOverviewCharts(data){
     charts.push(new Chart(cvStage, {
       type: 'bar',
       data: {
-        labels: stages.map(x => short(x[0], 18)),
+        labels: stages.map(x => short(x[0], 16)),
         datasets: [{
           label: 'Hồ sơ',
           data: stages.map(x => x[1]),
@@ -573,10 +594,21 @@ function renderOverviewCharts(data){
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
+          datalabels: {
+            display: true,
+            color: '#ffffff',
+            anchor: 'end',
+            align: 'top',
+            offset: -1,
+            font: { family: 'JetBrains Mono', weight: '700', size: 9 },
+            formatter: (val) => val ? `${fmt(val)}\n(${pct(val, T)})` : '',
+            textStrokeColor: 'rgba(0,0,0,0.8)',
+            textStrokeWidth: 2
+          },
           tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)} hồ sơ (${pct(ctx.raw, T)})` } }
         },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
+          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
           y: { beginAtZero: true, ticks: { precision: 0 } }
         }
       }
@@ -604,10 +636,21 @@ function renderOverviewCharts(data){
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
+          datalabels: {
+            display: true,
+            color: '#ffffff',
+            anchor: 'end',
+            align: 'top',
+            offset: -1,
+            font: { family: 'JetBrains Mono', weight: '700', size: 9.5 },
+            formatter: (val) => val ? `${fmt(val)} (${pct(val, T)})` : '',
+            textStrokeColor: 'rgba(0,0,0,0.8)',
+            textStrokeWidth: 2
+          },
           tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)} hồ sơ (${pct(ctx.raw, T)})` } }
         },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          x: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
           y: { beginAtZero: true, ticks: { precision: 0 } }
         }
       }
