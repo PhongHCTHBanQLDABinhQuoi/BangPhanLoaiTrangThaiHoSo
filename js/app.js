@@ -384,22 +384,23 @@ function mkChart(grid, span, title, tall, make){
 
 /* ── Master Render Function ── */
 function render(){
-  charts.forEach(c => c.destroy());
+  charts.forEach(c => { try { if(c && c.destroy) c.destroy(); } catch(e){} });
   charts = [];
   const data = filteredRows();
-  renderNote(data);
-  renderKPI(data);
-  renderInsights(data);
-  renderFunnel(data);
-  renderStageCross(data);
-  renderDonuts(data);
-  renderDeep(data);
-  renderSLATable(data);
-  renderStageBottlenecks(data);
-  renderLegalRiskTable(data);
-  renderLegalReport(data);
-  renderMonthlyKPI(data);
-  renderTable(data);
+  try { renderNote(data); } catch(e){ console.error('renderNote error:', e); }
+  try { renderKPI(data); } catch(e){ console.error('renderKPI error:', e); }
+  try { renderOverviewCharts(data); } catch(e){ console.error('renderOverviewCharts error:', e); }
+  try { renderInsights(data); } catch(e){ console.error('renderInsights error:', e); }
+  try { renderFunnel(data); } catch(e){ console.error('renderFunnel error:', e); }
+  try { renderStageCross(data); } catch(e){ console.error('renderStageCross error:', e); }
+  try { renderDonuts(data); } catch(e){ console.error('renderDonuts error:', e); }
+  try { renderDeep(data); } catch(e){ console.error('renderDeep error:', e); }
+  try { renderSLATable(data); } catch(e){ console.error('renderSLATable error:', e); }
+  try { renderStageBottlenecks(data); } catch(e){ console.error('renderStageBottlenecks error:', e); }
+  try { renderLegalRiskTable(data); } catch(e){ console.error('renderLegalRiskTable error:', e); }
+  try { renderLegalReport(data); } catch(e){ console.error('renderLegalReport error:', e); }
+  try { renderMonthlyKPI(data); } catch(e){ console.error('renderMonthlyKPI error:', e); }
+  try { renderTable(data); } catch(e){ console.error('renderTable error:', e); }
 }
 
 /* ── Render Modules ── */
@@ -414,20 +415,61 @@ function renderKPI(data){
   const ca = $('#countAll'); if(ca) ca.textContent = fmt(T);
 
   const items = [];
-  items.push({ s:'s-amber', v:fmt(T), sub:' / ' + fmt(rows.length), lbl:'Tổng hồ sơ đang lọc (' + pct(T, rows.length) + ')', barPct:rows.length ? T / rows.length * 100 : 0, barColor:'var(--color-blue-cornflower)' });
+  items.push({ 
+    s: 's-amber', 
+    v: fmt(T), 
+    sub: ' / ' + fmt(rows.length), 
+    lbl: 'Tổng hồ sơ toàn bộ dữ liệu (' + pct(T, rows.length) + ')', 
+    barPct: rows.length ? T / rows.length * 100 : 0, 
+    barColor: 'var(--color-blue-cornflower)' 
+  });
 
   const slaIdx = ci('trạng thái sla');
   if(slaIdx >= 0){
-    const overdueCount = data.filter(r => r[slaIdx].startsWith('Trễ')).length;
+    const overdueCount = data.filter(r => String(r[slaIdx] || '').startsWith('Trễ')).length;
+    const onTimeCount = T - overdueCount;
+    const onTimePct = T ? (onTimeCount / T * 100).toFixed(1) + '%' : '0.0%';
     const co = $('#countOverdue'); if(co) co.textContent = fmt(overdueCount);
-    items.push({ s:'s-red', v:fmt(overdueCount), sub:' · ' + pct(overdueCount, T), lbl:'🚨 Hồ sơ Trễ hạn SLA (Cần xử lý)', barPct:T ? overdueCount / T * 100 : 0, barColor:'var(--red)' });
+
+    items.push({ 
+      s: 's-emerald', 
+      v: onTimePct, 
+      sub: ' · ' + fmt(onTimeCount) + ' hs', 
+      lbl: '✅ Tỷ lệ Đúng Hạn SLA (KPI)', 
+      barPct: T ? onTimeCount / T * 100 : 0, 
+      barColor: 'var(--emerald)' 
+    });
+
+    items.push({ 
+      s: 's-red', 
+      v: fmt(overdueCount), 
+      sub: ' · ' + pct(overdueCount, T), 
+      lbl: '🚨 Hồ sơ Trễ hạn SLA (Quá hạn)', 
+      barPct: T ? overdueCount / T * 100 : 0, 
+      barColor: 'var(--red)' 
+    });
   }
 
   const gcn = ci('gcn');
   if(gcn >= 0){
-    const co = data.filter(r => r[gcn] === 'CÓ GCN').length, ko = data.filter(r => r[gcn] === 'KHÔNG CÓ GCN').length;
-    items.push({ s:'s-emerald', v:pct(co, T), sub:' · ' + fmt(co) + ' hs', lbl:'✅ CÓ Giấy chứng nhận', barPct:T ? co / T * 100 : 0, barColor:'var(--emerald)' });
-    items.push({ s:'s-violet', v:pct(ko, T), sub:' · ' + fmt(ko) + ' hs', lbl:'⚠️ KHÔNG có GCN', barPct:T ? ko / T * 100 : 0, barColor:'var(--violet)' });
+    const co = data.filter(r => normGCN(r[gcn]) === 'CÓ GCN').length;
+    const ko = data.filter(r => normGCN(r[gcn]) === 'KHÔNG CÓ GCN').length;
+    items.push({ 
+      s: 's-violet', 
+      v: pct(co, T), 
+      sub: ' · ' + fmt(co) + ' hs', 
+      lbl: '📄 CÓ Giấy chứng nhận (GCN)', 
+      barPct: T ? co / T * 100 : 0, 
+      barColor: 'var(--violet)' 
+    });
+    items.push({ 
+      s: 's-amber', 
+      v: pct(ko, T), 
+      sub: ' · ' + fmt(ko) + ' hs', 
+      lbl: '⚠️ KHÔNG có GCN (Cần xác minh)', 
+      barPct: T ? ko / T * 100 : 0, 
+      barColor: 'var(--amber)' 
+    });
   }
 
   items.forEach(k => {
@@ -438,6 +480,141 @@ function renderKPI(data){
   });
 }
 
+function renderOverviewCharts(data){
+  if(!data.length) return;
+
+  const T = data.length;
+  const slaIdx = ci('trạng thái sla');
+  const stgIdx = ci('giai đoạn');
+  const teamIdx = headers.indexOf(TEAM_COL);
+  const gcnIdx = ci('gcn');
+
+  // 1. Chart SLA Donut
+  const cvSla = $('#chartSlaDonut');
+  if(cvSla && slaIdx >= 0){
+    const overdueCount = data.filter(r => String(r[slaIdx] || '').startsWith('Trễ')).length;
+    const onTimeCount = T - overdueCount;
+
+    charts.push(new Chart(cvSla, {
+      type: 'doughnut',
+      data: {
+        labels: ['Đúng Hạn SLA', 'Trễ Hạn SLA'],
+        datasets: [{
+          data: [onTimeCount, overdueCount],
+          backgroundColor: ['#10b981', '#ef4444'],
+          borderWidth: 2,
+          borderColor: '#1e1e1e'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6, font: { size: 10.5 } } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} hs (${pct(ctx.raw, T)})` } }
+        }
+      }
+    }));
+  }
+
+  // 2. Chart GCN Donut
+  const cvGcn = $('#chartGcnDonut');
+  if(cvGcn && gcnIdx >= 0){
+    const co = data.filter(r => normGCN(r[gcnIdx]) === 'CÓ GCN').length;
+    const ko = data.filter(r => normGCN(r[gcnIdx]) === 'KHÔNG CÓ GCN').length;
+    const cx = T - co - ko;
+
+    const gcnLabels = ['Có GCN', 'Không GCN'];
+    const gcnCounts = [co, ko];
+    const gcnColors = ['#10b981', '#8b5cf6'];
+    if(cx > 0){ gcnLabels.push('Chưa xác định'); gcnCounts.push(cx); gcnColors.push('#64748b'); }
+
+    charts.push(new Chart(cvGcn, {
+      type: 'doughnut',
+      data: {
+        labels: gcnLabels,
+        datasets: [{
+          data: gcnCounts,
+          backgroundColor: gcnColors,
+          borderWidth: 2,
+          borderColor: '#1e1e1e'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, padding: 6, font: { size: 10.5 } } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.raw)} hs (${pct(ctx.raw, T)})` } }
+        }
+      }
+    }));
+  }
+
+  // 3. Chart 8 Stage Bar
+  const cvStage = $('#chartStageBar');
+  if(cvStage && stgIdx >= 0){
+    const m = uniqueVals(data, stgIdx);
+    const stages = [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'vi', { numeric: true }));
+
+    charts.push(new Chart(cvStage, {
+      type: 'bar',
+      data: {
+        labels: stages.map(x => short(x[0], 18)),
+        datasets: [{
+          label: 'Hồ sơ',
+          data: stages.map(x => x[1]),
+          backgroundColor: '#3b82f6',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)} hồ sơ (${pct(ctx.raw, T)})` } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9.5 } } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    }));
+  }
+
+  // 4. Chart Team Bar
+  const cvTeam = $('#chartTeamBar');
+  if(cvTeam && teamIdx >= 0){
+    const d = aggTopFull(data, teamIdx, 5);
+
+    charts.push(new Chart(cvTeam, {
+      type: 'bar',
+      data: {
+        labels: d.labels,
+        datasets: [{
+          label: 'Hồ sơ',
+          data: d.counts,
+          backgroundColor: ['#6798ff', '#8b5cf6', '#10b981', '#0ea5e9', '#d97706'],
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)} hồ sơ (${pct(ctx.raw, T)})` } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    }));
+  }
+}
+
 function renderInsights(data){
   const box = $('#insightsBox'); if(!box) return; const T = data.length;
   if(!T){ box.innerHTML = '<div class="insight-item">Không có dữ liệu.</div>'; return; }
@@ -445,15 +622,38 @@ function renderInsights(data){
   const ins = [];
   const slaIdx = ci('trạng thái sla');
   if(slaIdx >= 0){
-    const od = data.filter(r => r[slaIdx].startsWith('Trễ')).length;
-    if(od > 0) ins.push(`🚨 Có <b>${fmt(od)}</b> hồ sơ trễ hạn SLA (${pct(od, T)}). Cần tập trung tháo gỡ điểm nghẽn.`);
+    const od = data.filter(r => String(r[slaIdx] || '').startsWith('Trễ')).length;
+    const ok = T - od;
+    const okRate = T ? (ok / T * 100).toFixed(1) : 0;
+    if(od > 0){
+      ins.push(`🚨 <b>Tỷ lệ đáp ứng KPI SLA toàn dự án: ${okRate}%</b> — Hiện tại có <b>${fmt(od)}</b> hồ sơ trễ hạn SLA (${pct(od, T)}). Cần tập trung tháo gỡ điểm nghẽn tại các bước quá hạn.`);
+    } else {
+      ins.push(`🎉 <b>Tỷ lệ đáp ứng KPI SLA toàn dự án: 100%</b> — Tất cả ${fmt(T)} hồ sơ hiện tại đều đang được xử lý đúng tiến độ quy định!`);
+    }
   }
 
   const stgIdx = ci('giai đoạn');
   if(stgIdx >= 0){
     const m = uniqueVals(data, stgIdx);
     const top = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
-    if(top) ins.push(`📌 Giai đoạn tồn đọng nhiều nhất: <b>${escH(top[0])}</b> (${fmt(top[1])} hồ sơ · ${pct(top[1], T)}).`);
+    if(top) ins.push(`📌 <b>Điểm tập trung quy trình:</b> Giai đoạn <b>${escH(top[0])}</b> đang dồn ứ nhiều hồ sơ nhất với <b>${fmt(top[1])}</b> hồ sơ (${pct(top[1], T)} toàn dự án).`);
+  }
+
+  const gcnIdx = ci('gcn');
+  if(gcnIdx >= 0){
+    const ko = data.filter(r => normGCN(r[gcnIdx]) === 'KHÔNG CÓ GCN').length;
+    if(ko > 0){
+      ins.push(`⚠️ <b>Rủi ro pháp lý đất đai:</b> Có <b>${fmt(ko)}</b> hồ sơ chưa/không có GCN (${pct(ko, T)}). Cần ưu tiên thẩm định xác minh nguồn gốc đất.`);
+    }
+  }
+
+  const teamIdx = headers.indexOf(TEAM_COL);
+  if(teamIdx >= 0){
+    const m = uniqueVals(data, teamIdx);
+    const topTeam = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+    if(topTeam){
+      ins.push(`👥 <b>Khối lượng theo Tổ:</b> <b>${escH(topTeam[0])}</b> đang đảm nhận khối lượng lớn nhất với <b>${fmt(topTeam[1])}</b> hồ sơ (${pct(topTeam[1], T)}).`);
+    }
   }
 
   box.innerHTML = ins.map(i => `<div class="insight-item">${i}</div>`).join('');

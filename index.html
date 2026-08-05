@@ -72,16 +72,56 @@
        TAB 1: TỔNG QUAN KPI (EXECUTIVE OVERVIEW)
        ═══════════════════════════════════════════════════════════ -->
   <div class="tab-pane" id="tab-overview">
-    <div class="sec"><span class="sec-eyebrow">EXECUTIVE METRICS</span><h2 class="sec-title">📋 Chỉ Số KPI Tổng Quan</h2></div>
-    <div class="hero" id="kpiBar"></div>
+    <div class="overview-wallboard">
+      
+      <!-- Top Row: Compact KPI Metric Tiles -->
+      <div class="hero hero-compact" id="kpiBar"></div>
 
-    <div class="sec"><span class="sec-eyebrow">AUTOMATED INTELLIGENCE</span><h2 class="sec-title">💡 Nhận Xét &amp; Phân Tích Tự Động</h2></div>
-    <div class="insights" id="insightsBox"></div>
+      <!-- Main Wallboard Grid (3 Columns) -->
+      <div class="wallboard-grid">
 
-    <div class="sec" id="funnelSec"><span class="sec-eyebrow">PIPELINE FUNNEL STAGES</span><h2 class="sec-title">📌 Tiến Độ Phân Bổ Quy Trình 8 Giai Đoạn</h2></div>
-    <div class="pipeline" id="funnelCard">
-      <div class="hdr"><h3 id="funnelTitle">Tiến độ hồ sơ theo 8 giai đoạn bồi thường</h3><span class="note">Bấm vào từng dòng để lọc nhanh</span></div>
-      <div id="funnelRows"></div>
+        <!-- Column 1: SLA Progress & Land Certificate Donut Charts -->
+        <div class="wallboard-col">
+          <div class="ccard wallboard-card">
+            <h3>⚡ Tiến Độ SLA Toàn Bộ Hồ Sơ</h3>
+            <div class="cbox wallboard-cbox"><canvas id="chartSlaDonut"></canvas></div>
+          </div>
+          <div class="ccard wallboard-card">
+            <h3>📄 Cơ Cấu Giấy Chứng Nhận Đất Đai</h3>
+            <div class="cbox wallboard-cbox"><canvas id="chartGcnDonut"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Column 2: 8 Stage Pipeline Bar Chart & Team Workload Bar Chart -->
+        <div class="wallboard-col">
+          <div class="ccard wallboard-card">
+            <h3>📌 Phân Bổ Hồ Sơ Theo 8 Giai Đoạn Bồi Thường</h3>
+            <div class="cbox wallboard-cbox-lg"><canvas id="chartStageBar"></canvas></div>
+          </div>
+          <div class="ccard wallboard-card">
+            <h3>👥 Khối Lượng Hồ Sơ Theo 3 Tổ Nghiệp Vụ</h3>
+            <div class="cbox wallboard-cbox-sm"><canvas id="chartTeamBar"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Column 3: Automated Insights & Interactive Funnel List -->
+        <div class="wallboard-col">
+          <div class="ccard wallboard-card">
+            <h3>💡 Nhận Xét &amp; Phân Tích Tự Động</h3>
+            <div class="insights insights-compact" id="insightsBox"></div>
+          </div>
+
+          <div class="ccard wallboard-card">
+            <div class="hdr-compact">
+              <h3>📌 Tiến Độ 8 Giai Đoạn</h3>
+              <span class="note">Bấm để lọc</span>
+            </div>
+            <div class="pipeline-compact" id="funnelRows"></div>
+          </div>
+        </div>
+
+      </div>
+
     </div>
   </div>
 

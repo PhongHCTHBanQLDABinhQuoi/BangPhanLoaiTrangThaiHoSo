@@ -522,18 +522,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json_bytes, ctype="application/json; charset=utf-8")
             return
 
-    def do_POST(self):
-        path = self.path.split("?", 1)[0]
-        if path in ("/api/webhook", "/api/base-webhook"):
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length) if length > 0 else b""
-            print("  [Realtime Webhook] Nhận tín hiệu biến động dữ liệu trực tiếp từ Base Workflow!")
-            threading.Thread(target=refresh_cache_in_background).start()
-            self._send(200, json.dumps({"status": "received", "message": "Realtime sync triggered"}), ctype="application/json")
-            return
-        self._send(404, "Not found")
-
-
+        if path == "/cache_payload.json":
+            fp = os.path.join(BASE_DIR, "cache_payload.json")
+            if os.path.exists(fp):
+                with open(fp, "rb") as f:
+                    self._send(200, f.read(), ctype="application/json; charset=utf-8")
+                return
 
         if path.startswith("/css/"):
             rel_path = path.lstrip("/")
@@ -571,6 +565,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "ok", ctype="text/plain")
             return
 
+        self._send(404, "Not found")
+
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        if path in ("/api/webhook", "/api/base-webhook"):
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length) if length > 0 else b""
+            print("  [Realtime Webhook] Nhận tín hiệu biến động dữ liệu trực tiếp từ Base Workflow!")
+            threading.Thread(target=refresh_cache_in_background).start()
+            self._send(200, json.dumps({"status": "received", "message": "Realtime sync triggered"}), ctype="application/json")
+            return
         self._send(404, "Not found")
 
 
