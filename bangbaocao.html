@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bảng Báo Cáo Phân Loại Pháp Lý Hồ Sơ</title>
+<meta name="description" content="Bảng tra cứu phân loại pháp lý hồ sơ bồi thường — Dự án Bình Quới – Thanh Đa">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- Dùng chung design system với dashboard + phần riêng của trang này -->
+<link rel="stylesheet" href="css/dovetail.css">
+<link rel="stylesheet" href="css/bangbaocao.css">
+
+<script src="libs/xlsx.full.min.js"></script>
+<script>window.XLSX||document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/scr'+'ipt>')</script>
+</head>
+<body>
+
+<!-- ═══ TOPBAR ═══ -->
+<nav class="topbar">
+  <div class="logo">
+    <div class="icon-box">📄</div>
+    <span>BẢNG BÁO CÁO <em>PHÂN LOẠI PHÁP LÝ</em></span>
+  </div>
+  <span class="sub-title">BQLDA ĐTXD Phường Bình Quới – Thanh Đa</span>
+  <div class="spacer"></div>
+  <span class="conn" id="connBadge"><span class="dot on" id="connDot"></span><span id="connText">⏳ Đang nạp dữ liệu...</span></span>
+  <div class="actions">
+    <!-- href tương đối để chạy đúng cả trên GitHub Pages (site nằm trong subpath) -->
+    <a class="btn btn-ghost" href="index.html" title="Về dashboard KPI">‹ Dashboard</a>
+    <button class="btn btn-ghost" id="btnPrint">🖨️ In Bảng Danh Mục</button>
+    <button class="btn btn-accent" id="btnReload">⚡ Cập Nhật Dữ Liệu</button>
+  </div>
+</nav>
+
+<!-- ═══ 2 CHẾ ĐỘ XEM ═══ -->
+<div class="nav-tabs" id="navTabs">
+  <button class="tab-btn active" data-tab="view-catalog">📚 1. Danh Mục Phân Loại <span class="badge-count" id="cntCat">0</span></button>
+  <button class="tab-btn" data-tab="view-records">📋 2. Liệt Kê Theo Hồ Sơ <span class="badge-count" id="cntRec">0</span></button>
+  <button class="tab-btn" data-tab="view-nhom">🗂️ 3. Liệt Kê Theo Nhóm <span class="badge-count" id="cntNhom">0</span></button>
+</div>
+
+<main class="main">
+<div id="app">
+
+  <!-- ═══ THANH TÌM KIẾM & LỌC (dùng chung cho cả 2 chế độ) ═══ -->
+  <div class="toolbar bbc-toolbar">
+    <input type="search" id="globalSearch" class="bbc-search"
+           placeholder="🔍 Tìm hồ sơ: tên hộ dân, mã hồ sơ, số tờ, số thửa, cán bộ, pháp lý… (không cần gõ dấu)">
+    <select id="filterTeam" title="Lọc theo Tổ nghiệp vụ"></select>
+    <select id="filterSla" title="Lọc theo trạng thái SLA"></select>
+    <select id="filterStage" title="Lọc theo giai đoạn"></select>
+    <button class="btn btn-ghost" id="btnResetFilters">🔄 Xóa Lọc</button>
+    <span style="flex:1"></span>
+    <span id="metaInfo" class="bbc-meta"></span>
+    <button class="btn btn-blue" id="btnExcel">⬇️ Xuất Excel</button>
+  </div>
+
+  <div class="active-note" id="activeNote"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CHẾ ĐỘ 1: DANH MỤC PHÂN LOẠI (bấm 1 danh mục → liệt kê hồ sơ)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="view-catalog">
+    <div class="sec">
+      <span class="sec-eyebrow">LEGAL CLASSIFICATION CATALOG</span>
+      <h2 class="sec-title">📚 Bảng Tổng Hợp Phân Loại Pháp Lý Hồ Sơ Theo Tổ Nghiệp Vụ</h2>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-hdr">
+        <h3>Danh mục phân loại <span id="catNote"></span></h3>
+        <label class="bbc-check">
+          <input type="checkbox" id="chkHideZero"> Ẩn danh mục không có hồ sơ
+        </label>
+      </div>
+      <div class="tscroll">
+        <table class="dt legal-hierarchy-table bbc-catalog" id="catalogTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CHẾ ĐỘ 2: LIỆT KÊ THEO HỒ SƠ
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="view-records">
+    <div class="sec">
+      <span class="sec-eyebrow">RECORD LEVEL LOOKUP</span>
+      <h2 class="sec-title">📋 Liệt Kê Chi Tiết Từng Hồ Sơ</h2>
+    </div>
+
+    <div class="tbl-wrap">
+      <div class="tbl-hdr">
+        <h3>Hồ sơ <span id="recNote"></span></h3>
+        <span id="perPageWrap" class="bbc-perpage">
+          Số dòng/trang:
+          <select id="perPage">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+            <option value="99999">Tất cả</option>
+          </select>
+        </span>
+      </div>
+      <div class="tscroll">
+        <table class="dt bbc-records" id="recordTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button class="btn" id="prevPage">‹ Trước</button>
+        <span id="pageInfo"></span>
+        <button class="btn" id="nextPage">Sau ›</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CHẾ ĐỘ 3: LIỆT KÊ THEO NHÓM (gom các trường hợp thành nhóm)
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="view-nhom">
+    <div class="sec">
+      <span class="sec-eyebrow">CASE GROUP ROLL-UP</span>
+      <h2 class="sec-title">🗂️ Tổng Hợp Hồ Sơ Theo Nhóm Trường Hợp</h2>
+    </div>
+
+    <div id="nhomWarn"></div>
+
+    <div class="tbl-wrap" style="margin-bottom:20px">
+      <div class="tbl-hdr">
+        <h3>Tổng hợp nhóm <span id="nhomNote"></span></h3>
+      </div>
+      <div class="tscroll">
+        <table class="dt nhom-summary" id="nhomSummaryTable">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec">
+      <span class="sec-eyebrow">GROUP BREAKDOWN BY CASE</span>
+      <h2 class="sec-title">📑 Chi Tiết Từng Trường Hợp Trong Mỗi Nhóm</h2>
+    </div>
+
+    <div id="nhomDetailBox"></div>
+  </div>
+
+</div>
+</main>
+
+<footer>Bảng Báo Cáo Phân Loại Pháp Lý Hồ Sơ · Dovetail Blueprint Control Room · Base Workflow Engine</footer>
+
+<!-- ═══ BẢN IN BẢNG DANH MỤC (chỉ hiện khi bấm In) ═══ -->
+<div id="printReportWrapper" class="print-report-wrapper">
+  <h2 class="print-main-title">BẢNG TỔNG HỢP PHÂN LOẠI PHÁP LÝ HỒ SƠ BỒI THƯỜNG THỰC HIỆN THEO TỔ NGHIỆP VỤ</h2>
+  <div class="print-sub-meta" id="printReportMeta">Dự án: Khu đô thị mới Bình Quới – Thanh Đa</div>
+
+  <table class="print-table" id="printCatalogTable">
+    <thead></thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="print-signatures">
+    <div class="sig-col"><strong>NGƯỜI LẬP BÁO CÁO</strong><div class="sig-space"></div></div>
+    <div class="sig-col"><strong>PHỤ TRÁCH PHÒNG</strong><div class="sig-space"></div></div>
+    <div class="sig-col"><strong>GIÁM ĐỐC</strong><div class="sig-space"></div></div>
+  </div>
+</div>
+
+<!-- Lõi nghiệp vụ dùng chung với dashboard -->
+<script src="js/report-engine.js"></script>
+<script src="js/bangbaocao.js"></script>
+</body>
+</html>
