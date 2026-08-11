@@ -490,20 +490,20 @@ class Handler(BaseHTTPRequestHandler):
         # Trang bảng web tra cứu phân loại pháp lý.
         # Dạng có dấu / ở cuối phải chuyển hướng, nếu không các đường dẫn
         # tương đối (css/, js/, cache_payload.json) sẽ hỏng.
-        if path == "/bangbaocao/":
+        if path in ("/bangbaocao/", "/report-table/"):
             self.send_response(301)
             self.send_header("Location", "/bangbaocao")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
 
-        if path in ("/bangbaocao", "/bangbaocao.html"):
-            fp = os.path.join(BASE_DIR, "bangbaocao.html")
+        if path in ("/bangbaocao", "/bangbaocao.html", "/report-table", "/report-table.html"):
+            fp = os.path.join(BASE_DIR, "report-table.html")
             if os.path.exists(fp):
                 with open(fp, "rb") as f:
                     self._send(200, f.read())
             else:
-                self._send(404, "Không tìm thấy bangbaocao.html")
+                self._send(404, "Không tìm thấy report-table.html")
             return
 
         if path == "/api/stream":

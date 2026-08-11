@@ -137,39 +137,39 @@ const TITLE_COL_HEADER = 'STT / DANH MỤC PHÂN LOẠI PHÁP LÝ HỒ SƠ';
    Cây hiện tại cho ra 47 trường hợp / 76 dòng. Thêm hay bớt nhánh trong
    TREE_SPEC thì số TH TỰ ĐỘNG đánh lại, không cần sửa gì ở đây.
    ═══════════════════════════════════════════════════════════ */
-const TRUONG_HOP_HEADER = 'TRƯỜNG HỢP';
-const TRUONG_HOP_WIDTH  = '108px';
-const TRUONG_HOP_PREFIX = 'TH';   // đổi thành 'Trường hợp ' nếu muốn ghi đầy đủ
+const CASE_HEADER = 'TRƯỜNG HỢP';
+const CASE_WIDTH  = '108px';
+const CASE_PREFIX = 'TH';   // đổi thành 'Trường hợp ' nếu muốn ghi đầy đủ
 
 /* Ghi đè thủ công cho riêng một số dòng (nếu cần khác số tự động).
    Khoá là mã danh mục trong TREE_SPEC. Để rỗng = dùng hết số tự động.
    Ví dụ:   'V': 'TH45 (giao khoán)',
             'VI.1': '—',            */
-const TRUONG_HOP_OVERRIDE = {
+const CASE_OVERRIDE = {
 };
 
 /* Danh sách mã danh mục là "lá" (không còn mục con), theo đúng thứ tự bảng.
-   Vị trí trong mảng chính là số trường hợp: TH_LEAF_IDS[0] = TH1 */
-const TH_LEAF_IDS = (function(){
+   Vị trí trong mảng chính là số trường hợp: CASE_LEAF_IDS[0] = TH1 */
+const CASE_LEAF_IDS = (function(){
   const hasChild = {};
   RE.TREE_SPEC.forEach(n => { if(n.p) hasChild[n.p] = true; });
   return RE.TREE_SPEC.filter(n => !hasChild[n.id]).map(n => n.id);
 })();
 
-const TRUONG_HOP_COUNT = TH_LEAF_IDS.length;
+const CASE_COUNT = CASE_LEAF_IDS.length;
 
-const TRUONG_HOP_AUTO = (function(){
+const CASE_AUTO = (function(){
   const map = {};
-  TH_LEAF_IDS.forEach((id, i) => { map[id] = TRUONG_HOP_PREFIX + (i + 1); });
+  CASE_LEAF_IDS.forEach((id, i) => { map[id] = CASE_PREFIX + (i + 1); });
   return map;
 })();
 
-function truongHopOf(nodeId){
-  return TRUONG_HOP_OVERRIDE[nodeId] || TRUONG_HOP_AUTO[nodeId] || '';
+function caseLabelOf(nodeId){
+  return CASE_OVERRIDE[nodeId] || CASE_AUTO[nodeId] || '';
 }
 
-/* Số trường hợp → mã danh mục.  thNumToNode(3) === 'I.1.b.2' */
-function thNumToNode(num){ return TH_LEAF_IDS[num - 1] || null; }
+/* Số trường hợp → mã danh mục.  caseNumToNode(3) === 'I.1.b.2' */
+function caseNumToNode(num){ return CASE_LEAF_IDS[num - 1] || null; }
 
 /* ═══════════════════════════════════════════════════════════
    ⭐ TAB 3 — NHÓM TRƯỜNG HỢP
@@ -177,74 +177,74 @@ function thNumToNode(num){ return TH_LEAF_IDS[num - 1] || null; }
    Gom các trường hợp (TH) thành nhóm. Chỉ cần liệt kê SỐ TH, hệ thống
    tự quy ra danh mục pháp lý rồi cộng số hồ sơ tương ứng.
 
-   Thêm/sửa nhóm: sửa mảng NHOM_SPEC bên dưới.
+   Thêm/sửa nhóm: sửa mảng GROUP_SPEC bên dưới.
    TH nào không nằm trong nhóm nào sẽ tự động dồn vào một nhóm phụ
    "Chưa phân nhóm" (hiện rõ trên bảng để không bị thất lạc hồ sơ).
    Hệ thống tự kiểm: TH trùng ở 2 nhóm hoặc TH không tồn tại đều báo
    cảnh báo ngay trên bảng.
    ═══════════════════════════════════════════════════════════ */
-const NHOM_SPEC = [
+const GROUP_SPEC = [
   {
     key: 'n1',
     title: 'Nhóm 1',
     desc: 'Không tặng cho chuyển nhượng (mọi hiện trạng) + tặng cho giấy tay TRƯỚC 01/7/2014 mà chưa cấp GCN',
-    th: [1, 6, 7, 8, 11, 16, 17, 18, 21, 22, 27, 28, 29, 30, 33, 34, 39, 40, 41, 42],
-    rule: f => f.mucChinh && (f.khongTang || (f.chuaGCN && f.truoc))
+    cases: [1, 6, 7, 8, 11, 16, 17, 18, 21, 22, 27, 28, 29, 30, 33, 34, 39, 40, 41, 42],
+    rule: f => f.isMain && (f.noTransfer || (f.noGCN && f.before))
   },
   {
     key: 'n2',
     title: 'Nhóm 2',
     desc: 'Chưa cấp GCN + tặng cho, chuyển nhượng giấy tay SAU 01/7/2014',
-    th: [9, 10, 19, 20, 31, 32, 43, 44],
-    rule: f => f.mucChinh && f.chuaGCN && f.sau && !f.khongTang
+    cases: [9, 10, 19, 20, 31, 32, 43, 44],
+    rule: f => f.isMain && f.noGCN && f.after && !f.noTransfer
   },
   {
     key: 'n3',
     title: 'Nhóm 3',
     desc: 'Đã có GCN + tặng cho, chuyển nhượng giấy tay (cả trước và sau 01/7/2014)',
-    th: [2, 3, 4, 5, 12, 13, 14, 15, 23, 24, 25, 26, 35, 36, 37, 38],
-    rule: f => f.mucChinh && f.coGCN && !f.khongTang && (f.truoc || f.sau)
+    cases: [2, 3, 4, 5, 12, 13, 14, 15, 23, 24, 25, 26, 35, 36, 37, 38],
+    rule: f => f.isMain && f.hasGCN && !f.noTransfer && (f.before || f.after)
   }
 ];
 
 /* TH45 (HTX giao khoán), TH46–TH47 (đất cơ quan tổ chức) — thuộc mục V và VI,
    không nằm trong 4 hiện trạng đất dân cư nên để riêng, sẽ bổ sung nhóm sau. */
-const NHOM_REST_TITLE = 'Nhóm khác (để riêng)';
+const GROUP_REST_TITLE = 'Nhóm khác (để riêng)';
 
 /* Dựng danh sách nhóm đầy đủ + tự kiểm tra */
-const NHOM_WARNINGS = [];
-const NHOM_ALL = (function(){
+const GROUP_WARNINGS = [];
+const GROUP_ALL = (function(){
   const seen = {};
-  const list = NHOM_SPEC.map(g => {
-    const thSorted = g.th.slice().sort((a, b) => a - b);
-    thSorted.forEach(num => {
-      if(num < 1 || num > TRUONG_HOP_COUNT){
-        NHOM_WARNINGS.push(`${g.title}: TH${num} không tồn tại (chỉ có TH1–TH${TRUONG_HOP_COUNT})`);
+  const list = GROUP_SPEC.map(g => {
+    const caseSorted = g.cases.slice().sort((a, b) => a - b);
+    caseSorted.forEach(num => {
+      if(num < 1 || num > CASE_COUNT){
+        GROUP_WARNINGS.push(`${g.title}: TH${num} không tồn tại (chỉ có TH1–TH${CASE_COUNT})`);
       } else if(seen[num]){
-        NHOM_WARNINGS.push(`TH${num} bị xếp vào cả ${seen[num]} và ${g.title}`);
+        GROUP_WARNINGS.push(`TH${num} bị xếp vào cả ${seen[num]} và ${g.title}`);
       } else {
         seen[num] = g.title;
       }
     });
-    const valid = thSorted.filter(n => n >= 1 && n <= TRUONG_HOP_COUNT);
-    return { key: g.key, title: g.title, desc: g.desc, rule: g.rule, th: valid,
-             nodes: valid.map(thNumToNode).filter(Boolean) };
+    const valid = caseSorted.filter(n => n >= 1 && n <= CASE_COUNT);
+    return { key: g.key, title: g.title, desc: g.desc, rule: g.rule, cases: valid,
+             nodes: valid.map(caseNumToNode).filter(Boolean) };
   });
 
   const rest = [];
-  for(let i = 1; i <= TRUONG_HOP_COUNT; i++) if(!seen[i]) rest.push(i);
+  for(let i = 1; i <= CASE_COUNT; i++) if(!seen[i]) rest.push(i);
   if(rest.length){
     list.push({
-      key: '_rest', title: NHOM_REST_TITLE, isRest: true,
+      key: '_rest', title: GROUP_REST_TITLE, isRest: true,
       desc: 'Các trường hợp chưa được xếp vào Nhóm 1/2/3 — cần bổ sung',
-      th: rest, nodes: rest.map(thNumToNode).filter(Boolean)
+      cases: rest, nodes: rest.map(caseNumToNode).filter(Boolean)
     });
   }
   return list;
 })();
 
-const NHOM_BY_KEY = {};
-NHOM_ALL.forEach(g => NHOM_BY_KEY[g.key] = g);
+const GROUP_BY_KEY = {};
+GROUP_ALL.forEach(g => GROUP_BY_KEY[g.key] = g);
 
 
 /* ═══ TRẠNG THÁI ═══ */
@@ -255,7 +255,7 @@ let CLS = null;                 // kết quả classifyRows trên TOÀN BỘ h�
 let NODE_BY_ID = {};            // id → node trong TREE_SPEC
 
 let search = '';
-let fTeam = '', fSla = '', fStage = '', fNode = '', fNhom = '';
+let fTeam = '', fSla = '', fStage = '', fNode = '', fGroup = '';
 let page = 1, PER = 50;
 let sortCol = -1, sortAsc = true;
 let hideZero = false;
@@ -267,7 +267,7 @@ let VISIBLE = [];               // chỉ số dòng đang hiển thị
    nên số ở bảng danh mục luôn khớp với danh sách hồ sơ.
    ═══════════════════════════════════════════════════════════ */
 /* Tất cả chỉ số dòng thuộc 1 nhóm (các node của nhóm đều là lá nên không trùng) */
-function nhomRowIdx(g){
+function groupRowIdx(g){
   const out = [];
   g.nodes.forEach(id => {
     const list = CLS.nodeRows[id] || [];
@@ -279,8 +279,8 @@ function nhomRowIdx(g){
 function computeVisible(){
   // Gốc: đang lọc theo nhóm > theo danh mục > toàn bộ
   let base;
-  if(fNhom && NHOM_BY_KEY[fNhom]){
-    base = nhomRowIdx(NHOM_BY_KEY[fNhom]);
+  if(fGroup && GROUP_BY_KEY[fGroup]){
+    base = groupRowIdx(GROUP_BY_KEY[fGroup]);
   } else if(fNode && CLS.nodeRows[fNode]){
     base = CLS.nodeRows[fNode];
   } else {
@@ -328,7 +328,7 @@ function renderCatalog(){
   /* ── THEAD ── */
   const theadHtml = '<tr>' +
     `<th class="bbc-title-h">${RE.escH(TITLE_COL_HEADER)}</th>` +
-    `<th class="bbc-th-h" style="width:${TRUONG_HOP_WIDTH}">${RE.escH(TRUONG_HOP_HEADER)}</th>` +
+    `<th class="bbc-th-h" style="width:${CASE_WIDTH}">${RE.escH(CASE_HEADER)}</th>` +
     CATALOG_COLUMNS.map(c => `<th class="num" style="width:${c.width || 'auto'}">${RE.escH(c.title)}</th>`).join('') +
     '<th class="bbc-act-h">Hồ sơ</th>' +
     '</tr>';
@@ -343,8 +343,8 @@ function renderCatalog(){
     if(hideZero && rowTotal === 0) return;
 
     const showPct = (n.lvl === 1 || n.lvl === 2);
-    const truongHop = truongHopOf(n.id);
-    const excelRow = [n.title, truongHop];
+    const caseLabel = caseLabelOf(n.id);
+    const excelRow = [n.title, caseLabel];
 
     const cells = CATALOG_COLUMNS.map(col => {
       const val = countCol(col, idxList);
@@ -371,7 +371,7 @@ function renderCatalog(){
 
     html += `<tr class="lvl-${n.lvl}${fNode === n.id ? ' bbc-active-node' : ''}" data-node="${RE.escH(n.id)}">
       <td class="title-col">${RE.escH(n.title)}</td>
-      <td class="bbc-th-col">${RE.escH(truongHop)}</td>${cells}${actCell}</tr>`;
+      <td class="bbc-th-col">${RE.escH(caseLabel)}</td>${cells}${actCell}</tr>`;
 
     excelRows.push(excelRow);
   });
@@ -410,14 +410,14 @@ function renderCatalog(){
 
   const outOfTree = VISIBLE.length - inTree.length;
   $('#catNote').textContent =
-    `(${RE.fmt(TRUONG_HOP_COUNT)} trường hợp · ${RE.fmt(inTree.length)} hồ sơ trong bảng` +
+    `(${RE.fmt(CASE_COUNT)} trường hợp · ${RE.fmt(inTree.length)} hồ sơ trong bảng` +
     (outOfTree > 0 ? ` · ${RE.fmt(outOfTree)} hồ sơ chưa xác định hiện trạng nên không vào danh mục` : '') +
     ` · tổng dự án ${RE.fmt(denomAll)})`;
 
   /* Bản in dùng chung số liệu */
   renderPrintTable(theadHtml, html);
   CATALOG_EXCEL = {
-    head: [TITLE_COL_HEADER, TRUONG_HOP_HEADER].concat(CATALOG_COLUMNS.map(c => c.title)),
+    head: [TITLE_COL_HEADER, CASE_HEADER].concat(CATALOG_COLUMNS.map(c => c.title)),
     body: excelRows
   };
 }
@@ -437,32 +437,32 @@ function renderPrintTable(theadHtml, bodyHtml){
    BẢNG NHÓM TRƯỜNG HỢP (chế độ 3)
    Bảng tổng hợp 3 nhóm + bảng chi tiết từng TH trong mỗi nhóm
    ═══════════════════════════════════════════════════════════ */
-let NHOM_EXCEL = null;
+let GROUP_EXCEL = null;
 
-function renderNhom(){
+function renderGroups(){
   const visSet = new Set(VISIBLE);
   const inTree = VISIBLE.filter(i => CLS.nodeIdByRow[i] !== null);
   const denom = inTree.length > 0 ? inTree.length : 1;
 
   /* Chỉ số dòng của 1 nhóm, giới hạn trong tập đang hiển thị */
-  const idxOf = g => nhomRowIdx(g).filter(i => visSet.has(i));
+  const idxOf = g => groupRowIdx(g).filter(i => visSet.has(i));
 
   /* ── Cảnh báo cấu hình (TH trùng / không tồn tại / chưa phân nhóm) ── */
-  const warnBox = $('#nhomWarn');
-  const restGroup = NHOM_ALL.find(g => g.isRest);
-  const loi = NHOM_WARNINGS.concat(NHOM_AUDIT);
+  const warnBox = $('#groupWarn');
+  const restGroup = GROUP_ALL.find(g => g.isRest);
+  const errors = GROUP_WARNINGS.concat(GROUP_AUDIT);
   let html = '';
 
-  if(loi.length){
-    html += `<div class="nhom-warn">⚠️ ${loi.join('<br>')}</div>`;
+  if(errors.length){
+    html += `<div class="group-warn">⚠️ ${errors.join('<br>')}</div>`;
   }
   if(restGroup){
-    html += `<div class="nhom-info">ℹ️ <b>${restGroup.th.length}</b> trường hợp đang để riêng, ` +
-      `chưa xếp vào Nhóm 1/2/3: <b>${restGroup.th.map(n => TRUONG_HOP_PREFIX + n).join(', ')}</b> ` +
+    html += `<div class="group-info">ℹ️ <b>${restGroup.cases.length}</b> trường hợp đang để riêng, ` +
+      `chưa xếp vào Nhóm 1/2/3: <b>${restGroup.cases.map(n => CASE_PREFIX + n).join(', ')}</b> ` +
       `— thuộc mục V (đất Hợp tác xã giao khoán) và VI (đất cơ quan tổ chức).</div>`;
   }
-  if(!loi.length){
-    html += `<div class="nhom-ok">✓ Đã tự kiểm: ${RE.fmt(TRUONG_HOP_COUNT - (restGroup ? restGroup.th.length : 0))}` +
+  if(!errors.length){
+    html += `<div class="group-ok">✓ Đã tự kiểm: ${RE.fmt(CASE_COUNT - (restGroup ? restGroup.cases.length : 0))}` +
       ` trường hợp của Nhóm 1/2/3 khớp đúng quy luật, không trùng nhau, không thiếu.</div>`;
   }
   warnBox.innerHTML = html;
@@ -472,16 +472,16 @@ function renderNhom(){
   const sumBody = [];
 
   let sumHtml = '<tr>' +
-    '<th class="nhom-name-h">NHÓM</th>' +
+    '<th class="group-name-h">NHÓM</th>' +
     '<th class="num" style="width:120px">SỐ TRƯỜNG HỢP</th>' +
     CATALOG_COLUMNS.map(c => `<th class="num" style="width:${c.width || 'auto'}">${RE.escH(c.title)}</th>`).join('') +
     '<th class="bbc-act-h">Hồ sơ</th></tr>';
-  $('#nhomSummaryTable thead').innerHTML = sumHtml;
+  $('#groupSummaryTable thead').innerHTML = sumHtml;
 
   let bodyHtml = '';
-  NHOM_ALL.forEach(g => {
+  GROUP_ALL.forEach(g => {
     const idxList = idxOf(g);
-    const row = [g.title, g.th.length];
+    const row = [g.title, g.cases.length];
 
     const cells = CATALOG_COLUMNS.map(col => {
       const val = countCol(col, idxList);
@@ -492,22 +492,22 @@ function renderNhom(){
     }).join('');
 
     const act = idxList.length
-      ? `<td class="bbc-act"><button class="bbc-drill" data-nhom="${RE.escH(g.key)}" title="Liệt kê ${idxList.length} hồ sơ của ${RE.escH(g.title)}">Xem ${RE.fmt(idxList.length)} hồ sơ ›</button></td>`
+      ? `<td class="bbc-act"><button class="bbc-drill" data-group="${RE.escH(g.key)}" title="Liệt kê ${idxList.length} hồ sơ của ${RE.escH(g.title)}">Xem ${RE.fmt(idxList.length)} hồ sơ ›</button></td>`
       : '<td class="bbc-act"></td>';
 
-    bodyHtml += `<tr class="nhom-row${g.isRest ? ' nhom-rest' : ''}${fNhom === g.key ? ' bbc-active-node' : ''}">
-      <td class="nhom-name">
+    bodyHtml += `<tr class="group-row${g.isRest ? ' group-rest' : ''}${fGroup === g.key ? ' bbc-active-node' : ''}">
+      <td class="group-name">
         <b>${RE.escH(g.title)}</b>
-        <div class="nhom-desc">${RE.escH(g.desc || '')}</div>
-        <div class="nhom-thlist">${g.th.map(n => TRUONG_HOP_PREFIX + n).join(' · ')}</div>
+        <div class="group-desc">${RE.escH(g.desc || '')}</div>
+        <div class="group-thlist">${g.cases.map(n => CASE_PREFIX + n).join(' · ')}</div>
       </td>
-      <td class="num"><b>${g.th.length}</b></td>${cells}${act}</tr>`;
+      <td class="num"><b>${g.cases.length}</b></td>${cells}${act}</tr>`;
 
     sumBody.push(row);
   });
 
   /* Dòng tổng của bảng nhóm */
-  const totRow = ['TỔNG CỘNG', NHOM_ALL.reduce((s, g) => s + g.th.length, 0)];
+  const totRow = ['TỔNG CỘNG', GROUP_ALL.reduce((s, g) => s + g.cases.length, 0)];
   const totCells = CATALOG_COLUMNS.map(col => {
     const val = countCol(col, inTree);
     totRow.push(val);
@@ -517,38 +517,38 @@ function renderNhom(){
     <td class="num"><b>${totRow[1]}</b></td>${totCells}<td class="bbc-act"></td></tr>`;
   sumBody.push(totRow);
 
-  $('#nhomSummaryTable tbody').innerHTML = bodyHtml;
+  $('#groupSummaryTable tbody').innerHTML = bodyHtml;
 
   /* ── BẢNG CHI TIẾT TỪNG NHÓM ── */
-  const detHead = ['NHÓM', TRUONG_HOP_HEADER, 'DANH MỤC PHÁP LÝ']
+  const detHead = ['NHÓM', CASE_HEADER, 'DANH MỤC PHÁP LÝ']
     .concat(CATALOG_COLUMNS.map(c => c.title));
   const detBody = [];
   let detHtml = '';
 
-  NHOM_ALL.forEach(g => {
+  GROUP_ALL.forEach(g => {
     const gIdx = idxOf(g);
 
-    detHtml += `<div class="nhom-block${g.isRest ? ' nhom-block-rest' : ''}">
-      <div class="nhom-block-hdr">
+    detHtml += `<div class="group-block${g.isRest ? ' group-block-rest' : ''}">
+      <div class="group-block-hdr">
         <h4>${RE.escH(g.title)}</h4>
-        <span class="nhom-block-meta">${g.th.length} trường hợp · <b>${RE.fmt(gIdx.length)}</b> hồ sơ</span>
-        <span class="nhom-block-desc">${RE.escH(g.desc || '')}</span>
+        <span class="group-block-meta">${g.cases.length} trường hợp · <b>${RE.fmt(gIdx.length)}</b> hồ sơ</span>
+        <span class="group-block-desc">${RE.escH(g.desc || '')}</span>
       </div>
-      <div class="tscroll nhom-block-scroll">
-      <table class="dt nhom-detail">
+      <div class="tscroll group-block-scroll">
+      <table class="dt group-detail">
         <thead><tr>
-          <th style="width:${TRUONG_HOP_WIDTH}">${RE.escH(TRUONG_HOP_HEADER)}</th>
-          <th class="nhom-path-h">DANH MỤC PHÁP LÝ (đường dẫn đầy đủ)</th>
+          <th style="width:${CASE_WIDTH}">${RE.escH(CASE_HEADER)}</th>
+          <th class="group-path-h">DANH MỤC PHÁP LÝ (đường dẫn đầy đủ)</th>
           ${CATALOG_COLUMNS.map(c => `<th class="num" style="width:${c.width || 'auto'}">${RE.escH(c.title)}</th>`).join('')}
           <th class="bbc-act-h">Hồ sơ</th>
         </tr></thead>
         <tbody>`;
 
-    g.th.forEach(num => {
-      const nodeId = thNumToNode(num);
+    g.cases.forEach(num => {
+      const nodeId = caseNumToNode(num);
       if(!nodeId) return;
       const idxList = (CLS.nodeRows[nodeId] || []).filter(i => visSet.has(i));
-      const label = TRUONG_HOP_PREFIX + num;
+      const label = CASE_PREFIX + num;
       const path = nodePath(nodeId);
       const row = [g.title, label, path];
 
@@ -564,7 +564,7 @@ function renderNhom(){
 
       detHtml += `<tr>
         <td class="bbc-th-col">${RE.escH(label)}</td>
-        <td class="nhom-path"><code>${RE.escH(nodeId)}</code> ${RE.escH(path)}</td>
+        <td class="group-path"><code>${RE.escH(nodeId)}</code> ${RE.escH(path)}</td>
         ${cells}${act}</tr>`;
 
       detBody.push(row);
@@ -573,25 +573,25 @@ function renderNhom(){
     detHtml += '</tbody></table></div></div>';
   });
 
-  $('#nhomDetailBox').innerHTML = detHtml;
+  $('#groupDetailBox').innerHTML = detHtml;
 
   /* Bấm "Xem hồ sơ" ở cả 2 bảng */
-  $$('#view-nhom .bbc-drill').forEach(b => {
+  $$('#view-group .bbc-drill').forEach(b => {
     b.onclick = ev => {
       ev.stopPropagation();
-      if(b.dataset.nhom) drillNhom(b.dataset.nhom);
+      if(b.dataset.group) drillGroup(b.dataset.group);
       else if(b.dataset.node) drillTo(b.dataset.node);
     };
   });
 
-  $('#nhomNote').textContent =
-    `(${NHOM_ALL.length} nhóm · ${RE.fmt(TRUONG_HOP_COUNT)} trường hợp · ${RE.fmt(inTree.length)} hồ sơ)`;
+  $('#groupNote').textContent =
+    `(${GROUP_ALL.length} nhóm · ${RE.fmt(CASE_COUNT)} trường hợp · ${RE.fmt(inTree.length)} hồ sơ)`;
 
-  NHOM_EXCEL = { sumHead: sumHead, sumBody: sumBody, detHead: detHead, detBody: detBody };
+  GROUP_EXCEL = { sumHead: sumHead, sumBody: sumBody, detHead: detHead, detBody: detBody };
 }
 
-function drillNhom(key){
-  fNhom = key;
+function drillGroup(key){
+  fGroup = key;
   fNode = '';
   page = 1;
   switchTab('view-records');
@@ -723,46 +723,46 @@ function nodePath(id, sep){
    pháp lý, rồi đối chiếu với `rule` của từng nhóm. Nếu một TH thoả quy luật
    của nhóm nào mà chưa được liệt kê (hoặc bị liệt kê sai nhóm) thì báo ngay
    trên bảng — khỏi phải dò tay khi TREE_SPEC thay đổi. */
-function thFlags(nodeId){
+function caseFlags(nodeId){
   const parts = nodePathParts(nodeId);
   const root = (parts[0] || '').toUpperCase();
   const s = parts.join(' | ').toUpperCase();
   return {
-    mucChinh:  /^(I|II|III|IV)\./.test(root),   // chỉ 4 mục hiện trạng đất dân cư
-    khongTang: s.includes('KHÔNG TẶNG'),
-    chuaGCN:   s.includes('CHƯA CẤP GCN'),
-    coGCN:     s.includes('CÓ GCN') && !s.includes('CHƯA CẤP GCN'),
-    truoc:     s.includes('TRƯỚC 01/7/2014'),
-    sau:       s.includes('SAU 01/7/2014')
+    isMain:     /^(I|II|III|IV)\./.test(root),   // chỉ 4 mục hiện trạng đất dân cư
+    noTransfer: s.includes('KHÔNG TẶNG'),
+    noGCN:      s.includes('CHƯA CẤP GCN'),
+    hasGCN:     s.includes('CÓ GCN') && !s.includes('CHƯA CẤP GCN'),
+    before:     s.includes('TRƯỚC 01/7/2014'),
+    after:      s.includes('SAU 01/7/2014')
   };
 }
 
-let NHOM_AUDIT = [];
+let GROUP_AUDIT = [];
 
-function auditNhom(){
-  NHOM_AUDIT = [];
+function auditGroups(){
+  GROUP_AUDIT = [];
   const assigned = {};
-  NHOM_ALL.forEach(g => g.th.forEach(n => assigned[n] = g));
+  GROUP_ALL.forEach(g => g.cases.forEach(n => assigned[n] = g));
 
-  NHOM_ALL.forEach(g => {
+  GROUP_ALL.forEach(g => {
     if(typeof g.rule !== 'function') return;
-    const thieu = [], thua = [];
-    for(let num = 1; num <= TRUONG_HOP_COUNT; num++){
-      const nodeId = thNumToNode(num);
+    const missing = [], extra = [];
+    for(let num = 1; num <= CASE_COUNT; num++){
+      const nodeId = caseNumToNode(num);
       if(!nodeId) continue;
-      let khop = false;
-      try { khop = !!g.rule(thFlags(nodeId)); } catch(e){ continue; }
-      const daXep = g.th.includes(num);
-      if(khop && !daXep) thieu.push(num);
-      if(!khop && daXep) thua.push(num);
+      let matched = false;
+      try { matched = !!g.rule(caseFlags(nodeId)); } catch(e){ continue; }
+      const isListed = g.cases.includes(num);
+      if(matched && !isListed) missing.push(num);
+      if(!matched && isListed) extra.push(num);
     }
-    if(thieu.length){
-      NHOM_AUDIT.push(`<b>${g.title}</b> theo quy luật còn thiếu: ` +
-        thieu.map(n => `${TRUONG_HOP_PREFIX}${n} (${assigned[n] ? 'đang ở ' + assigned[n].title : 'chưa xếp'})`).join(', '));
+    if(missing.length){
+      GROUP_AUDIT.push(`<b>${g.title}</b> theo quy luật còn thiếu: ` +
+        missing.map(n => `${CASE_PREFIX}${n} (${assigned[n] ? 'đang ở ' + assigned[n].title : 'chưa xếp'})`).join(', '));
     }
-    if(thua.length){
-      NHOM_AUDIT.push(`<b>${g.title}</b> có trường hợp không khớp quy luật: ` +
-        thua.map(n => TRUONG_HOP_PREFIX + n).join(', '));
+    if(extra.length){
+      GROUP_AUDIT.push(`<b>${g.title}</b> có trường hợp không khớp quy luật: ` +
+        extra.map(n => CASE_PREFIX + n).join(', '));
     }
   });
 }
@@ -770,7 +770,7 @@ function auditNhom(){
 /* ═══ DRILL: bấm danh mục → liệt kê hồ sơ ═══ */
 function drillTo(nodeId){
   fNode = nodeId;
-  fNhom = '';
+  fGroup = '';
   page = 1;
   switchTab('view-records');
   refresh();
@@ -812,13 +812,13 @@ function renderNote(){
   if(fTeam) chips.push(`Tổ: <b>${RE.escH(fTeam)}</b>`);
   if(fStage) chips.push(`Giai đoạn: <b>${RE.escH(fStage)}</b>`);
   if(fSla) chips.push(`SLA: <b>${RE.escH(fSla === 'Trễ' ? 'Trễ hạn' : fSla)}</b>`);
-  if(fNhom && NHOM_BY_KEY[fNhom]){
-    const g = NHOM_BY_KEY[fNhom];
-    chips.push(`<b>${RE.escH(g.title)}</b> (${g.th.length} trường hợp: ${RE.escH(g.th.map(n => TRUONG_HOP_PREFIX + n).join(', '))})
-      <button class="bbc-chip-x" id="btnClearNhom" title="Bỏ lọc nhóm">✕</button>`);
+  if(fGroup && GROUP_BY_KEY[fGroup]){
+    const g = GROUP_BY_KEY[fGroup];
+    chips.push(`<b>${RE.escH(g.title)}</b> (${g.cases.length} trường hợp: ${RE.escH(g.cases.map(n => CASE_PREFIX + n).join(', '))})
+      <button class="bbc-chip-x" id="btnClearGroup" title="Bỏ lọc nhóm">✕</button>`);
   }
   if(fNode){
-    chips.push(`Danh mục <code>${RE.escH(fNode)}</code> (${RE.escH(truongHopOf(fNode) || '—')}): <b>${RE.escH(nodePath(fNode))}</b>
+    chips.push(`Danh mục <code>${RE.escH(fNode)}</code> (${RE.escH(caseLabelOf(fNode) || '—')}): <b>${RE.escH(nodePath(fNode))}</b>
       <button class="bbc-chip-x" id="btnClearNode" title="Bỏ lọc danh mục">✕</button>`);
   }
 
@@ -828,8 +828,8 @@ function renderNote(){
     box.innerHTML = `<div class="note-banner">🔍 <b>${RE.fmt(VISIBLE.length)}</b> / ${RE.fmt(ROWS.length)} hồ sơ · ${chips.join(' · ')}</div>`;
     const bx = $('#btnClearNode');
     if(bx) bx.onclick = () => { fNode = ''; page = 1; refresh(); };
-    const bn = $('#btnClearNhom');
-    if(bn) bn.onclick = () => { fNhom = ''; page = 1; refresh(); };
+    const bn = $('#btnClearGroup');
+    if(bn) bn.onclick = () => { fGroup = ''; page = 1; refresh(); };
   }
 }
 
@@ -838,11 +838,11 @@ function refresh(){
   computeVisible();
   renderNote();
   renderCatalog();
-  renderNhom();
+  renderGroups();
   renderRecords();
   $('#cntCat').textContent = RE.fmt(RE.TREE_SPEC.length);
   $('#cntRec').textContent = RE.fmt(VISIBLE.length);
-  $('#cntNhom').textContent = RE.fmt(NHOM_ALL.length);
+  $('#cntGroup').textContent = RE.fmt(GROUP_ALL.length);
 }
 
 /* ═══ ĐỔI CHẾ ĐỘ XEM ═══ */
@@ -876,14 +876,14 @@ async function load(force){
     NODE_BY_ID = {};
     RE.TREE_SPEC.forEach(n => NODE_BY_ID[n.id] = n);
 
-    auditNhom();     // cần NODE_BY_ID để đọc đường dẫn danh mục
+    auditGroups();   // cần NODE_BY_ID để đọc đường dẫn danh mục
     buildFilters();
     refresh();
 
     setConn(true, `⚡ ${RE.fmt(ROWS.length)} hồ sơ · ${META.source || 'Base Workflow'}`);
     $('#metaInfo').textContent = `Cập nhật: ${META.updated || '—'} · ${RE.fmt(ROWS.length)} hồ sơ`;
   } catch(err){
-    console.error('[bangbaocao] Lỗi nạp dữ liệu:', err);
+    console.error('[report-table] Lỗi nạp dữ liệu:', err);
     setConn(false, '✕ Không nạp được dữ liệu');
     $('#recordTable tbody').innerHTML =
       `<tr><td class="empty-msg">Không nạp được dữ liệu.<br><small>${RE.escH(err.message)}</small></td></tr>`;
@@ -903,7 +903,7 @@ $('#filterSla').onchange   = e => { fSla   = e.target.value; page = 1; refresh()
 $('#filterStage').onchange = e => { fStage = e.target.value; page = 1; refresh(); };
 
 $('#btnResetFilters').onclick = () => {
-  search = ''; fTeam = ''; fSla = ''; fStage = ''; fNode = ''; fNhom = '';
+  search = ''; fTeam = ''; fSla = ''; fStage = ''; fNode = ''; fGroup = '';
   page = 1; sortCol = -1; sortAsc = true;
   $('#globalSearch').value = '';
   buildFilters();
@@ -934,18 +934,18 @@ $('#btnPrint').onclick = () => {
 $('#btnExcel').onclick = () => {
   if(!window.XLSX) return;
   const onRecords = !$('#view-records').classList.contains('hidden');
-  const onNhom = !$('#view-nhom').classList.contains('hidden');
+  const onGroup = !$('#view-group').classList.contains('hidden');
   const wb = XLSX.utils.book_new();
   let ws, name;
 
   /* Tab 3: xuất 2 sheet — tổng hợp nhóm + chi tiết từng trường hợp */
-  if(onNhom){
-    if(!NHOM_EXCEL) return;
-    const wsSum = XLSX.utils.aoa_to_sheet([NHOM_EXCEL.sumHead].concat(NHOM_EXCEL.sumBody));
+  if(onGroup){
+    if(!GROUP_EXCEL) return;
+    const wsSum = XLSX.utils.aoa_to_sheet([GROUP_EXCEL.sumHead].concat(GROUP_EXCEL.sumBody));
     wsSum['!cols'] = [{ wch: 16 }, { wch: 16 }].concat(CATALOG_COLUMNS.map(() => ({ wch: 16 })));
     XLSX.utils.book_append_sheet(wb, wsSum, 'TongHopNhom');
 
-    const wsDet = XLSX.utils.aoa_to_sheet([NHOM_EXCEL.detHead].concat(NHOM_EXCEL.detBody));
+    const wsDet = XLSX.utils.aoa_to_sheet([GROUP_EXCEL.detHead].concat(GROUP_EXCEL.detBody));
     wsDet['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 90 }].concat(CATALOG_COLUMNS.map(() => ({ wch: 16 })));
     XLSX.utils.book_append_sheet(wb, wsDet, 'ChiTietTruongHop');
 

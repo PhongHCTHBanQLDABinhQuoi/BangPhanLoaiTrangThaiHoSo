@@ -12,7 +12,7 @@
 
 <!-- Dùng chung design system với dashboard + phần riêng của trang này -->
 <link rel="stylesheet" href="css/dovetail.css">
-<link rel="stylesheet" href="css/bangbaocao.css">
+<link rel="stylesheet" href="css/report-table.css">
 
 <script src="libs/xlsx.full.min.js"></script>
 <script>window.XLSX||document.write('<scr'+'ipt src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/scr'+'ipt>')</script>
@@ -40,7 +40,7 @@
 <div class="nav-tabs" id="navTabs">
   <button class="tab-btn active" data-tab="view-catalog">📚 1. Danh Mục Phân Loại <span class="badge-count" id="cntCat">0</span></button>
   <button class="tab-btn" data-tab="view-records">📋 2. Liệt Kê Theo Hồ Sơ <span class="badge-count" id="cntRec">0</span></button>
-  <button class="tab-btn" data-tab="view-nhom">🗂️ 3. Liệt Kê Theo Nhóm <span class="badge-count" id="cntNhom">0</span></button>
+  <button class="tab-btn" data-tab="view-group">🗂️ 3. Liệt Kê Theo Nhóm <span class="badge-count" id="cntGroup">0</span></button>
 </div>
 
 <main class="main">
@@ -125,20 +125,20 @@
   <!-- ═══════════════════════════════════════════════════════════
        CHẾ ĐỘ 3: LIỆT KÊ THEO NHÓM (gom các trường hợp thành nhóm)
        ═══════════════════════════════════════════════════════════ -->
-  <div class="tab-pane hidden" id="view-nhom">
+  <div class="tab-pane hidden" id="view-group">
     <div class="sec">
       <span class="sec-eyebrow">CASE GROUP ROLL-UP</span>
       <h2 class="sec-title">🗂️ Tổng Hợp Hồ Sơ Theo Nhóm Trường Hợp</h2>
     </div>
 
-    <div id="nhomWarn"></div>
+    <div id="groupWarn"></div>
 
     <div class="tbl-wrap" style="margin-bottom:20px">
       <div class="tbl-hdr">
-        <h3>Tổng hợp nhóm <span id="nhomNote"></span></h3>
+        <h3>Tổng hợp nhóm <span id="groupNote"></span></h3>
       </div>
       <div class="tscroll">
-        <table class="dt nhom-summary" id="nhomSummaryTable">
+        <table class="dt group-summary" id="groupSummaryTable">
           <thead></thead>
           <tbody></tbody>
         </table>
@@ -150,7 +150,7 @@
       <h2 class="sec-title">📑 Chi Tiết Từng Trường Hợp Trong Mỗi Nhóm</h2>
     </div>
 
-    <div id="nhomDetailBox"></div>
+    <div id="groupDetailBox"></div>
   </div>
 
 </div>
@@ -177,6 +177,6 @@
 
 <!-- Lõi nghiệp vụ dùng chung với dashboard -->
 <script src="js/report-engine.js"></script>
-<script src="js/bangbaocao.js"></script>
+<script src="js/report-table.js"></script>
 </body>
 </html>

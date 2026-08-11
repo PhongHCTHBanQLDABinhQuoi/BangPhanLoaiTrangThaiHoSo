@@ -189,7 +189,7 @@
    ═══════════════════════════════════════════════════════════ */
 
 /* Hộp thông báo kết quả tự kiểm phân nhóm */
-.nhom-warn, .nhom-info, .nhom-ok {
+.group-warn, .group-info, .group-ok {
   margin: 0 0 10px 0;
   padding: 10px 14px;
   border-radius: 8px;
@@ -197,46 +197,46 @@
   line-height: 1.55;
 }
 
-.nhom-warn {
+.group-warn {
   background: rgba(239, 68, 68, 0.10);
   border: 1px solid rgba(239, 68, 68, 0.45);
   color: #f0908c;
 }
 
-.nhom-info {
+.group-info {
   background: rgba(103, 152, 255, 0.10);
   border: 1px solid rgba(103, 152, 255, 0.38);
   color: #a9c4ff;
 }
 
-.nhom-ok {
+.group-ok {
   background: rgba(16, 185, 129, 0.09);
   border: 1px solid rgba(16, 185, 129, 0.35);
   color: #6ee7b7;
 }
 
 /* ── Bảng tổng hợp nhóm ── */
-.nhom-summary th.nhom-name-h { width: 1%; min-width: 300px; text-align: left; }
+.group-summary th.group-name-h { width: 1%; min-width: 300px; text-align: left; }
 
-.nhom-summary td.nhom-name {
+.group-summary td.group-name {
   white-space: normal;
   line-height: 1.35;
   vertical-align: top;
   min-width: 300px;
 }
 
-.nhom-summary td.nhom-name > b {
+.group-summary td.group-name > b {
   font-size: 14.5px;
   color: var(--color-blue-cornflower);
 }
 
-.nhom-desc {
+.group-desc {
   font-size: 12px;
   color: var(--color-ash);
   margin-top: 3px;
 }
 
-.nhom-thlist {
+.group-thlist {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: #7f9fd8;
@@ -244,14 +244,14 @@
   word-break: break-word;
 }
 
-.nhom-summary tr.nhom-row:hover { background: rgba(103, 152, 255, 0.08); }
+.group-summary tr.group-row:hover { background: rgba(103, 152, 255, 0.08); }
 
 /* Nhóm "Chưa phân nhóm" — tô cảnh báo để không bị bỏ sót */
-.nhom-summary tr.nhom-rest { background: rgba(217, 119, 6, 0.09); }
-.nhom-summary tr.nhom-rest td.nhom-name > b { color: var(--amber); }
+.group-summary tr.group-rest { background: rgba(217, 119, 6, 0.09); }
+.group-summary tr.group-rest td.group-name > b { color: var(--amber); }
 
 /* ── Khối chi tiết từng nhóm ── */
-.nhom-block {
+.group-block {
   border: 1px solid var(--color-card-carbon);
   border-radius: 8px;
   margin-bottom: 18px;
@@ -259,9 +259,9 @@
   background: var(--color-deep-coal);
 }
 
-.nhom-block-rest { border-color: rgba(217, 119, 6, 0.4); }
+.group-block-rest { border-color: rgba(217, 119, 6, 0.4); }
 
-.nhom-block-hdr {
+.group-block-hdr {
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -271,33 +271,33 @@
   background: rgba(103, 152, 255, 0.07);
 }
 
-.nhom-block-rest .nhom-block-hdr { background: rgba(217, 119, 6, 0.10); }
+.group-block-rest .group-block-hdr { background: rgba(217, 119, 6, 0.10); }
 
-.nhom-block-hdr h4 {
+.group-block-hdr h4 {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--color-snow);
 }
 
-.nhom-block-meta {
+.group-block-meta {
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--color-blue-cornflower);
   white-space: nowrap;
 }
 
-.nhom-block-desc {
+.group-block-desc {
   font-size: 12px;
   color: var(--color-ash);
   flex: 1 1 260px;
 }
 
-.nhom-block-scroll { max-height: none; }
+.group-block-scroll { max-height: none; }
 
-.nhom-detail th.nhom-path-h { text-align: left; width: 100%; min-width: 320px; }
+.group-detail th.group-path-h { text-align: left; width: 100%; min-width: 320px; }
 
-.nhom-detail td.nhom-path {
+.group-detail td.group-path {
   white-space: normal;
   word-break: break-word;
   line-height: 1.3;
@@ -305,7 +305,7 @@
   color: var(--color-ash);
 }
 
-.nhom-detail td.nhom-path code {
+.group-detail td.group-path code {
   font-family: var(--font-mono);
   font-size: 10.5px;
   padding: 1px 5px;

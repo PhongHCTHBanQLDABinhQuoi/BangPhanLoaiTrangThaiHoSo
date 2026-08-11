@@ -3,7 +3,7 @@
    ═══════════════════════════════════════════════════════════
    File này chứa TOÀN BỘ logic nghiệp vụ dùng chung giữa:
      • index.html   (dashboard 6 tab)      → js/app.js
-     • bangbaocao.html (trang bảng báo cáo) → js/bangbaocao.js
+     • report-table.html (trang bảng báo cáo) → js/report-table.js
 
    ⚠️ ĐÂY LÀ NGUỒN SỰ THẬT DUY NHẤT của cây phân loại pháp lý
       (TREE_SPEC) và của cách suy ra Tổ/Phòng. Sửa ở đây là
