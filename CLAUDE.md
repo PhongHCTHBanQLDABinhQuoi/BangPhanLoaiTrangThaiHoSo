@@ -69,9 +69,9 @@ Frontend `fetch('/api/data')` thất bại → **tự fallback** sang `fetch('ca
 | `index.html` | ~344 | Dashboard: khung 6 tab + modal chi tiết + **template in báo cáo** (`#printReportWrapper`). Chỉ là skeleton, mọi nội dung do JS bơm vào. |
 | **`js/report-engine.js`** | ~420 | ⭐ **LÕI NGHIỆP VỤ DÙNG CHUNG** cho cả 2 trang: `TEAM_MAP`/`resolveTeam`/`enrichTeam`, `normGCN`, **`TREE_SPEC`** (cây phân loại pháp lý), `classifyRows()`, `loadPayload()`. **Nguồn sự thật duy nhất** — sửa ở đây là sửa cho cả dashboard lẫn trang báo cáo. |
 | `js/app.js` | ~1.400 | Logic riêng của dashboard: filter engine, 13 hàm render, KPI tháng, export Excel, print. Gọi lõi qua `RE.*`. |
-| `bangbaocao.html` | ~150 | **Trang `/bangbaocao`** — bảng WEB tra cứu phân loại pháp lý, 2 chế độ xem. Xem mục 7. |
-| `js/bangbaocao.js` | ~570 | Logic trang tra cứu. **`CATALOG_COLUMNS` + `RECORD_COLUMNS` ở đầu file = nơi thêm cột mới.** |
-| `css/bangbaocao.css` | ~180 | Chỉ phần RIÊNG của trang tra cứu (dòng bấm được, tag danh mục, sticky header). Nền tảng dùng chung `dovetail.css`. |
+| `report-table.html` | ~150 | **Trang `/bangbaocao`** — bảng WEB tra cứu phân loại pháp lý, 2 chế độ xem. Xem mục 7. |
+| `js/report-table.js` | ~570 | Logic trang tra cứu. **`CATALOG_COLUMNS` + `RECORD_COLUMNS` ở đầu file = nơi thêm cột mới.** |
+| `css/report-table.css` | ~180 | Chỉ phần RIÊNG của trang tra cứu (dòng bấm được, tag danh mục, sticky header). Nền tảng dùng chung `dovetail.css`. |
 | `css/dovetail.css` | 1.482 | Design system Dovetail (dark) + layout wallboard + **print engine A4 landscape** + responsive 1024×768. Dùng cho **cả 2 trang**. |
 | `.claude/launch.json` | — | Cấu hình để Claude Code / IDE tự khởi động server (`python server.py`, port 8080). |
 | `cache_payload.json` | — | Snapshot dữ liệu (~2,9 MB, 2.225 hồ sơ). Do Actions tự cập nhật. |
@@ -82,13 +82,13 @@ Frontend `fetch('/api/data')` thất bại → **tự fallback** sang `fetch('ca
 
 Không có `package.json`, `requirements.txt`, test, linter. Python **stdlib thuần** (`urllib`, `http.server`, `gzip`, `ThreadPoolExecutor`).
 
-**Thứ tự nạp script bắt buộc:** `js/report-engine.js` phải nạp **TRƯỚC** `js/app.js` và `js/bangbaocao.js` (cả hai đọc `window.ReportEngine` ngay ở dòng đầu).
+**Thứ tự nạp script bắt buộc:** `js/report-engine.js` phải nạp **TRƯỚC** `js/app.js` và `js/report-table.js` (cả hai đọc `window.ReportEngine` ngay ở dòng đầu).
 
 ### Hai trang HTML
 | Trang | URL | Dùng chung | Riêng |
 |---|---|---|---|
 | Dashboard KPI | `/` | `report-engine.js`, `dovetail.css` | `app.js`, Chart.js |
-| Bảng tra cứu pháp lý | `/bangbaocao` | `report-engine.js`, `dovetail.css` | `bangbaocao.js`, `bangbaocao.css` |
+| Bảng tra cứu pháp lý | `/bangbaocao` | `report-engine.js`, `dovetail.css` | `report-table.js`, `report-table.css` |
 
 Đi qua lại giữa 2 trang: nút **📄 Bảng Báo Cáo** trên topbar dashboard, và nút **‹ Dashboard** trên topbar trang tra cứu.
 
@@ -214,7 +214,7 @@ Theo `DESIGN.md` — **Dovetail dark**: canvas `#0a0a0a` → section `#141414` �
 
 ## 7. Trang `/bangbaocao` — bảng WEB tra cứu phân loại pháp lý
 
-Trang riêng, độc lập với dashboard, để **tra cứu và liệt kê hồ sơ** theo danh mục pháp lý. Truy cập: `/bangbaocao` (có server) hoặc `/bangbaocao.html` (GitHub Pages).
+Trang riêng, độc lập với dashboard, để **tra cứu và liệt kê hồ sơ** theo danh mục pháp lý. Truy cập: `/bangbaocao` (có server) hoặc `/report-table.html` (GitHub Pages).
 
 ### Hai chế độ xem (2 tab)
 
@@ -236,18 +236,18 @@ Cây hiện tại ⇒ **47 trường hợp / 76 dòng** (29 dòng là tiêu đ�
 | `V.` ĐẤT HỢP TÁC XÃ GIAO KHOÁN — **mục lớn nhưng không có mục con** | **TH45** |
 | `VI.1` / `VI.2` | **TH46** / **TH47** |
 
-Cấu hình trong `js/bangbaocao.js`:
-- `TRUONG_HOP_AUTO` — IIFE tự tính, node nào không xuất hiện trong `parentMap` với vai trò cha thì là lá ⇒ được số. **Thêm/bớt nhánh trong `TREE_SPEC` thì số TH tự đánh lại**, không phải sửa gì.
-- `TRUONG_HOP_PREFIX` — mặc định `'TH'`; đổi thành `'Trường hợp '` nếu muốn ghi đầy đủ.
-- `TRUONG_HOP_OVERRIDE` — ghi đè thủ công cho riêng vài dòng, khoá là mã danh mục. Mặc định rỗng. **Gõ sai mã thì ô im lặng trống, không báo lỗi.**
-- `TRUONG_HOP_HEADER`, `TRUONG_HOP_WIDTH` — tiêu đề & độ rộng cột.
-- `truongHopOf(nodeId)` = `OVERRIDE || AUTO || ''`.
+Cấu hình trong `js/report-table.js`:
+- `CASE_AUTO` — IIFE tự tính, node nào không xuất hiện trong `parentMap` với vai trò cha thì là lá ⇒ được số. **Thêm/bớt nhánh trong `TREE_SPEC` thì số TH tự đánh lại**, không phải sửa gì.
+- `CASE_PREFIX` — mặc định `'TH'`; đổi thành `'Trường hợp '` nếu muốn ghi đầy đủ.
+- `CASE_OVERRIDE` — ghi đè thủ công cho riêng vài dòng, khoá là mã danh mục. Mặc định rỗng. **Gõ sai mã thì ô im lặng trống, không báo lỗi.**
+- `CASE_HEADER`, `CASE_WIDTH` — tiêu đề & độ rộng cột.
+- `caseLabelOf(nodeId)` = `OVERRIDE || AUTO || ''`.
 
 Cột này **tự động có trong bản in A4 và file Excel xuất ra**.
 
 ### 7.1 Nhóm trường hợp (Tab 3)
 
-Cấu hình ở mảng **`NHOM_SPEC`** trong `js/bangbaocao.js` — chỉ cần liệt kê **số TH**, hệ thống tự quy ra mã danh mục rồi cộng hồ sơ:
+Cấu hình ở mảng **`GROUP_SPEC`** trong `js/report-table.js` — chỉ cần liệt kê **số TH**, hệ thống tự quy ra mã danh mục rồi cộng hồ sơ:
 
 ```js
 { key:'n2', title:'Nhóm 2',
@@ -288,7 +288,7 @@ Mọi bộ lọc (ô tìm kiếm + Tổ + SLA + Giai đoạn + danh mục/nhóm 
 - Nút `🖨️ In Bảng Danh Mục` in Tab 1 ra **A4 ngang có 3 ô chữ ký** (dùng lại `@media print` của `dovetail.css`, tự bỏ cột nút bấm).
 - Nút `⬇️ Xuất Excel` xuất **đúng tab đang xem** (danh mục hoặc danh sách hồ sơ đang lọc).
 
-### ⭐ Thêm cột mới — mở `js/bangbaocao.js`, sửa ở đầu file
+### ⭐ Thêm cột mới — mở `js/report-table.js`, sửa ở đầu file
 
 Hai mảng cấu hình, mỗi mảng có sẵn **ví dụ comment** bên trên để copy:
 
@@ -359,9 +359,9 @@ git pull --rebase
 - **Toàn bộ text UI, comment, commit message: tiếng Việt.** Tên biến/hàm: tiếng Anh.
 - Không thêm framework, không thêm build step, không thêm dependency ngoài. Giữ nguyên triết lý **zero-build, chạy bằng double-click**.
 - Thêm thư viện mới → tải vào `libs/`, khai báo trong `LIB_SOURCES` (`server.py:54`) **và** thêm fallback CDN `document.write` trong `<head>`.
-- **Logic nghiệp vụ dùng chung phải để ở `js/report-engine.js`**, không copy sang `app.js` hay `bangbaocao.js`. Engine không được khai báo biến toàn cục nào ngoài `window.ReportEngine` (nếu không sẽ đụng `const` của `app.js` → SyntaxError cả trang). **Thêm hàm mới vào engine thì nhớ thêm vào khối `return {...}` ở cuối** — quên là trang gọi sẽ ném `TypeError: RE.xxx is not a function` và mọi thứ phía sau đứng im.
+- **Logic nghiệp vụ dùng chung phải để ở `js/report-engine.js`**, không copy sang `app.js` hay `report-table.js`. Engine không được khai báo biến toàn cục nào ngoài `window.ReportEngine` (nếu không sẽ đụng `const` của `app.js` → SyntaxError cả trang). **Thêm hàm mới vào engine thì nhớ thêm vào khối `return {...}` ở cuối** — quên là trang gọi sẽ ném `TypeError: RE.xxx is not a function` và mọi thứ phía sau đứng im.
 - Thêm khối render mới trên dashboard → viết hàm `renderXxx(data)` rồi thêm 1 dòng `try{...}catch{}` vào `render()` trong `app.js`.
-- Thêm cột vào trang tra cứu → chỉ sửa `CATALOG_COLUMNS` / `RECORD_COLUMNS` trong `js/bangbaocao.js`, **không** sửa engine.
+- Thêm cột vào trang tra cứu → chỉ sửa `CATALOG_COLUMNS` / `RECORD_COLUMNS` trong `js/report-table.js`, **không** sửa engine.
 - Màu sắc/khoảng cách: dùng CSS variable của Dovetail, **đừng hardcode hex mới**. Đọc `DESIGN.md` phần *Do's and Don'ts* trước khi thêm UI.
 - Sửa cây phân loại pháp lý → chỉ sửa `TREE_SPEC`; nhớ **bản in dùng chung dữ liệu**, phải kiểm tra cả Print Preview.
 - Thay đổi cấu trúc payload ở `server.py` → phải chạy `python server.py --sync` và kiểm tra lại cả 6 tab, vì frontend dò cột theo tên header.
