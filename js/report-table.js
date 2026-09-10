@@ -111,6 +111,64 @@ const RECORD_COLUMNS = [
   // { title: 'Deadline GĐ',   col: 'deadline', width: '130px' },
 ];
 
+/* ═══════════════════════════════════════════════════════════
+   ⭐ CỘT CỦA FILE EXCEL "DANH SÁCH HỒ SƠ" — THÊM/BỚT CỘT Ở ĐÂY
+   ═══════════════════════════════════════════════════════════
+   Bảng trên web (RECORD_COLUMNS ở trên) chỉ hiện 13 cột cho vừa màn
+   hình; file Excel thì xuất ĐẦY ĐỦ. Mỗi dòng dưới đây = 1 CỘT trong file.
+
+     title : tiêu đề cột trong Excel
+     col   : tên trong C.*  (vd 'sothua' → lấy r[C.sothua])
+     type  : kiểu ô trong Excel, quyết định file có "sạch" hay không
+             (bỏ trống)  = chữ
+             'int'       = số nguyên   → SUM / lọc số được
+             'num'       = số thập phân
+             'pct'       = phần trăm thật (92% lưu là 0,92)
+             'date'      = ngày          → sắp xếp theo ngày được
+             'datetime'  = ngày + giờ
+             ⚠ Ô nào không đúng kiểu (vd số thửa "MP15") thì tự giữ
+               nguyên chữ, không bị đọc sai thành số.
+     wch   : độ rộng cột (số ký tự)
+     calc  : cột TÍNH TOÁN, không lấy từ Base:
+             'stt'  = số thứ tự
+             'ma'   = mã danh mục pháp lý (vd I.1.b.2)
+             'th'   = số trường hợp (vd TH3)
+             'path' = đường dẫn danh mục đầy đủ
+
+   Muốn bỏ cột nào thì thêm // ở đầu dòng.
+   ═══════════════════════════════════════════════════════════ */
+const EXPORT_RECORD_COLUMNS = [
+  { title: 'STT',                                  calc: 'stt',  type: 'int', wch: 6 },
+  { title: 'Job ID',                               col: 'jobid',              wch: 11 },
+  { title: 'Tên hồ sơ',                            col: 'name',               wch: 42 },
+  { title: 'Tổ nghiệp vụ',                         col: 'team',               wch: 14 },
+  { title: 'Cán bộ phụ trách',                     col: 'owner',              wch: 15 },
+  { title: 'Giai đoạn',                            col: 'stage',              wch: 26 },
+  { title: 'Trạng thái SLA',                       col: 'sla',                wch: 15 },
+  { title: 'Deadline giai đoạn',                   col: 'deadline', type: 'datetime', wch: 18 },
+  { title: 'Cập nhật lần cuối',                    col: 'updated',  type: 'datetime', wch: 18 },
+  { title: '% Checklist',                          col: 'checklist', type: 'pct',     wch: 12 },
+  { title: 'Hiện trạng đất',                       col: 'ht',                 wch: 26 },
+  { title: 'GCN',                                  col: 'gcn',                wch: 18 },
+  { title: 'Pháp lý tặng, cho, chuyển nhượng',     col: 'pl',                 wch: 36 },
+  { title: 'Tách thửa',                            col: 'tt',                 wch: 18 },
+  { title: 'Loại đất',                             col: 'loaidat',            wch: 20 },
+  { title: 'Loại hồ sơ',                           col: 'loaihoso',           wch: 18 },
+  { title: 'Số nhà',                               col: 'sonha',              wch: 16 },
+  { title: 'Tên đường',                            col: 'duong',              wch: 20 },
+  { title: 'Khu phố',                              col: 'khupho',             wch: 12 },
+  { title: 'Số tờ',                                col: 'soto',    type: 'int', wch: 8 },
+  { title: 'Số thửa',                              col: 'sothua',  type: 'int', wch: 9 },
+  { title: 'Một phần (m2)',                        col: 'motphan', type: 'num', wch: 13 },
+  { title: 'Toàn phần (m2)',                       col: 'toanphan', type: 'num', wch: 13 },
+  { title: 'Ngày kiểm đếm',                        col: 'ngaykd',  type: 'date', wch: 14 },
+  { title: 'Vướng mắc, khó khăn',                  col: 'vuongmac',           wch: 30 },
+  { title: 'Mã danh mục pháp lý',                  calc: 'ma',                wch: 15 },
+  { title: 'Trường hợp',                           calc: 'th',                wch: 12 },
+  { title: 'Danh mục pháp lý (đường dẫn đầy đủ)',  calc: 'path',              wch: 72 },
+  { title: 'Link Base Workflow',                   col: 'link',               wch: 38 }
+];
+
 const TITLE_COL_HEADER = 'STT / DANH MỤC PHÂN LOẠI PHÁP LÝ HỒ SƠ';
 
 /* ═══════════════════════════════════════════════════════════
@@ -335,7 +393,7 @@ function renderCatalog(){
 
   /* ── TBODY ── */
   let html = '';
-  const excelRows = [];
+  const excelRows = [];      // dữ liệu thô cho file Excel — mỗi dòng 1 object
 
   RE.TREE_SPEC.forEach(n => {
     const idxList = (CLS.nodeRows[n.id] || []).filter(i => visSet.has(i));
@@ -344,11 +402,11 @@ function renderCatalog(){
 
     const showPct = (n.lvl === 1 || n.lvl === 2);
     const caseLabel = caseLabelOf(n.id);
-    const excelRow = [n.title, caseLabel];
+    const counts = [];
 
     const cells = CATALOG_COLUMNS.map(col => {
       const val = countCol(col, idxList);
-      excelRow.push(val);
+      counts.push(val);
 
       if(!val) return '<td class="num bbc-zero">0</td>';
 
@@ -373,20 +431,22 @@ function renderCatalog(){
       <td class="title-col">${RE.escH(n.title)}</td>
       <td class="bbc-th-col">${RE.escH(caseLabel)}</td>${cells}${actCell}</tr>`;
 
-    excelRows.push(excelRow);
+    excelRows.push({
+      id: n.id, lvl: n.lvl, title: n.title, path: nodePath(n.id, ' > '),
+      caseLabel: caseLabel, counts: counts, rowTotal: rowTotal
+    });
   });
 
   /* ── DÒNG TỔNG CỘNG ── */
   const grandLabel = 'TỔNG CỘNG HỒ SƠ BỒI THƯỜNG DỰ ÁN';
-  const grandExcel = [grandLabel, ''];
+  const grandCounts = [];
   const grandCells = CATALOG_COLUMNS.map(col => {
     const val = countCol(col, inTree);
-    grandExcel.push(val);
+    grandCounts.push(val);
     return `<td class="num"><b>${RE.fmt(val)}</b><span class="pct-badge"> (${(val / denom * 100).toFixed(1)}%)</span></td>`;
   }).join('');
 
   html += `<tr class="total-row"><td><b>${grandLabel}</b></td><td class="bbc-th-col"></td>${grandCells}<td class="bbc-act"></td></tr>`;
-  excelRows.push(grandExcel);
 
   // +3 = cột danh mục + cột Trường hợp + cột hành động "Hồ sơ"
   const colCount = CATALOG_COLUMNS.length + 3;
@@ -417,8 +477,11 @@ function renderCatalog(){
   /* Bản in dùng chung số liệu */
   renderPrintTable(theadHtml, html);
   CATALOG_EXCEL = {
-    head: [TITLE_COL_HEADER, CASE_HEADER].concat(CATALOG_COLUMNS.map(c => c.title)),
-    body: excelRows
+    rows: excelRows,                 // từng dòng danh mục
+    totalLabel: grandLabel,          // dòng TỔNG CỘNG để riêng, luôn nằm cuối
+    totalCounts: grandCounts,
+    denom: denom,                    // mẫu số tính % (hồ sơ trong bảng)
+    inTree: inTree.length
   };
 }
 
@@ -468,8 +531,7 @@ function renderGroups(){
   warnBox.innerHTML = html;
 
   /* ── BẢNG TỔNG HỢP NHÓM ── */
-  const sumHead = ['NHÓM', 'SỐ TRƯỜNG HỢP'].concat(CATALOG_COLUMNS.map(c => c.title));
-  const sumBody = [];
+  const sumBody = [];        // dữ liệu thô cho sheet "TongHopNhom"
 
   let sumHtml = '<tr>' +
     '<th class="group-name-h">NHÓM</th>' +
@@ -481,11 +543,11 @@ function renderGroups(){
   let bodyHtml = '';
   GROUP_ALL.forEach(g => {
     const idxList = idxOf(g);
-    const row = [g.title, g.cases.length];
+    const counts = [];
 
     const cells = CATALOG_COLUMNS.map(col => {
       const val = countCol(col, idxList);
-      row.push(val);
+      counts.push(val);
       if(!val) return '<td class="num bbc-zero">0</td>';
       const p = (val / denom * 100).toFixed(1);
       return `<td class="num"><b>${RE.fmt(val)}</b><span class="pct-badge"> (${p}%)</span></td>`;
@@ -503,26 +565,28 @@ function renderGroups(){
       </td>
       <td class="num"><b>${g.cases.length}</b></td>${cells}${act}</tr>`;
 
-    sumBody.push(row);
+    sumBody.push({
+      title: g.title, desc: g.desc || '', caseCount: g.cases.length,
+      caseList: g.cases.map(n => CASE_PREFIX + n).join(', '),
+      counts: counts, rowTotal: idxList.length
+    });
   });
 
   /* Dòng tổng của bảng nhóm */
-  const totRow = ['TỔNG CỘNG', GROUP_ALL.reduce((s, g) => s + g.cases.length, 0)];
+  const totCases = GROUP_ALL.reduce((s, g) => s + g.cases.length, 0);
+  const totCounts = [];
   const totCells = CATALOG_COLUMNS.map(col => {
     const val = countCol(col, inTree);
-    totRow.push(val);
+    totCounts.push(val);
     return `<td class="num"><b>${RE.fmt(val)}</b><span class="pct-badge"> (${(val / denom * 100).toFixed(1)}%)</span></td>`;
   }).join('');
   bodyHtml += `<tr class="total-row"><td><b>TỔNG CỘNG</b></td>
-    <td class="num"><b>${totRow[1]}</b></td>${totCells}<td class="bbc-act"></td></tr>`;
-  sumBody.push(totRow);
+    <td class="num"><b>${totCases}</b></td>${totCells}<td class="bbc-act"></td></tr>`;
 
   $('#groupSummaryTable tbody').innerHTML = bodyHtml;
 
   /* ── BẢNG CHI TIẾT TỪNG NHÓM ── */
-  const detHead = ['NHÓM', CASE_HEADER, 'DANH MỤC PHÁP LÝ']
-    .concat(CATALOG_COLUMNS.map(c => c.title));
-  const detBody = [];
+  const detBody = [];        // dữ liệu thô cho sheet "ChiTietTruongHop"
   let detHtml = '';
 
   GROUP_ALL.forEach(g => {
@@ -550,11 +614,11 @@ function renderGroups(){
       const idxList = (CLS.nodeRows[nodeId] || []).filter(i => visSet.has(i));
       const label = CASE_PREFIX + num;
       const path = nodePath(nodeId);
-      const row = [g.title, label, path];
+      const counts = [];
 
       const cells = CATALOG_COLUMNS.map(col => {
         const val = countCol(col, idxList);
-        row.push(val);
+        counts.push(val);
         return val ? `<td class="num">${RE.fmt(val)}</td>` : '<td class="num bbc-zero">0</td>';
       }).join('');
 
@@ -567,7 +631,10 @@ function renderGroups(){
         <td class="group-path"><code>${RE.escH(nodeId)}</code> ${RE.escH(path)}</td>
         ${cells}${act}</tr>`;
 
-      detBody.push(row);
+      detBody.push({
+        group: g.title, caseLabel: label, nodeId: nodeId,
+        path: nodePath(nodeId, ' > '), counts: counts, rowTotal: idxList.length
+      });
     });
 
     detHtml += '</tbody></table></div></div>';
@@ -587,7 +654,11 @@ function renderGroups(){
   $('#groupNote').textContent =
     `(${GROUP_ALL.length} nhóm · ${RE.fmt(CASE_COUNT)} trường hợp · ${RE.fmt(inTree.length)} hồ sơ)`;
 
-  GROUP_EXCEL = { sumHead: sumHead, sumBody: sumBody, detHead: detHead, detBody: detBody };
+  GROUP_EXCEL = {
+    sumBody: sumBody, detBody: detBody,
+    totCases: totCases, totCounts: totCounts,
+    denom: denom, inTree: inTree.length
+  };
 }
 
 function drillGroup(key){
@@ -930,44 +1001,182 @@ $('#btnPrint').onclick = () => {
   setTimeout(() => { document.title = old; }, 500);
 };
 
-/* Xuất Excel: xuất đúng chế độ đang xem */
-$('#btnExcel').onclick = () => {
-  if(!window.XLSX) return;
-  const onRecords = !$('#view-records').classList.contains('hidden');
-  const onGroup = !$('#view-group').classList.contains('hidden');
-  const wb = XLSX.utils.book_new();
-  let ws, name;
+/* ═══════════════════════════════════════════════════════════
+   XUẤT EXCEL — xuất đúng chế độ (tab) đang xem
+   ═══════════════════════════════════════════════════════════
+   Quy ước dựng file nằm ở js/report-engine.js mục 8 (RE.xlSheet):
+     • Dòng 1 = tiêu đề cột, dữ liệu từ dòng 2, KHÔNG gộp ô, KHÔNG
+       chèn dòng "BÁO CÁO…" phía trên ⇒ lọc / sắp xếp / pivot được ngay.
+     • MỖI Ô MỘT GIÁ TRỊ: trên web ghi "123 (45,2%)" trong một ô thì
+       ra Excel tách thành 2 CỘT — cột số và cột %.
+     • Số ra số, % ra phần trăm thật, ngày ra ngày; ô trống là ô rỗng.
+     • Thông tin báo cáo + bộ lọc đang bật nằm ở sheet "ThongTin".
+   ═══════════════════════════════════════════════════════════ */
 
-  /* Tab 3: xuất 2 sheet — tổng hợp nhóm + chi tiết từng trường hợp */
+/* Với mỗi cột trong CATALOG_COLUMNS sinh ra 1 cột SỐ + 1 cột % đi kèm.
+   Thêm cột mới ở CATALOG_COLUMNS là file Excel tự có thêm 2 cột. */
+function metricCols(){
+  const out = [];
+  CATALOG_COLUMNS.forEach(c => {
+    out.push({ title: c.title, type: 'int', wch: 15 });
+    if(c.pct){
+      out.push({
+        title: c.pct === 'overall' ? '% trên tổng bảng' : '% ' + c.title,
+        type: 'pct', wch: 14
+      });
+    }
+  });
+  return out;
+}
+
+/* Mảng số đếm → mảng giá trị xen kẽ [số, %, số, %…] khớp metricCols().
+   rowTotal = tổng của chính dòng đó (mẫu số cho pct:'row')
+   denom    = tổng hồ sơ trong bảng (mẫu số cho pct:'overall') */
+function metricVals(counts, rowTotal, denom){
+  const out = [];
+  CATALOG_COLUMNS.forEach((c, i) => {
+    const val = counts[i];
+    out.push(val);
+    if(c.pct){
+      const base = c.pct === 'overall' ? denom : rowTotal;
+      out.push(base > 0 ? val / base : null);
+    }
+  });
+  return out;
+}
+
+/* Lấy giá trị 1 ô cho file Excel danh sách hồ sơ (EXPORT_RECORD_COLUMNS) */
+function exportCellValue(rowIdx, cd, stt){
+  if(cd.calc === 'stt') return stt;
+  if(cd.calc){
+    const id = CLS.nodeIdByRow[rowIdx];
+    if(!id) return '';
+    if(cd.calc === 'ma')   return id;
+    if(cd.calc === 'th')   return caseLabelOf(id);
+    if(cd.calc === 'path') return nodePath(id, ' > ');
+    return '';
+  }
+  const ci = C[cd.col];
+  return (ci >= 0 && ci !== undefined) ? ROWS[rowIdx][ci] : '';
+}
+
+/* Sheet "ThongTin" — mô tả file: đơn vị, thời điểm, nguồn, bộ lọc đang bật */
+function infoSheet(noiDung, extra){
+  const f = [];
+  if(search.trim()) f.push('Từ khoá tìm kiếm: ' + search.trim());
+  if(fTeam)  f.push('Tổ: ' + fTeam);
+  if(fSla)   f.push('Trạng thái SLA: ' + fSla);
+  if(fStage) f.push('Giai đoạn: ' + fStage);
+  if(fNode)  f.push('Danh mục: ' + fNode + ' — ' + nodePath(fNode, ' > '));
+  if(fGroup && GROUP_BY_KEY[fGroup]) f.push('Nhóm: ' + GROUP_BY_KEY[fGroup].title);
+
+  return RE.xlInfoSheet([
+    ['Đơn vị',                 'Ban Quản lý dự án đầu tư xây dựng phường Bình Quới'],
+    ['Dự án',                  'Khu đô thị mới Bình Quới – Thanh Đa'],
+    ['Nội dung file',          noiDung],
+    ['Thời điểm xuất file',    RE.xlNow()],
+    ['Nguồn dữ liệu',          META.source || 'Base Workflow'],
+    ['Base cập nhật lúc',      META.updated || ''],
+    ['Tổng hồ sơ toàn dự án',  ROWS.length],
+    ['Hồ sơ khớp bộ lọc',      VISIBLE.length],
+    ['Bộ lọc đang áp dụng',    f.length ? f.join('   |   ') : 'Không lọc — toàn bộ hồ sơ']
+  ].concat(extra || []));
+}
+
+$('#btnExcel').onclick = () => {
+  if(!window.XLSX){ alert('Chưa nạp được thư viện Excel (libs/xlsx.full.min.js).'); return; }
+  const onRecords = !$('#view-records').classList.contains('hidden');
+  const onGroup   = !$('#view-group').classList.contains('hidden');
+  const wb = XLSX.utils.book_new();
+
+  /* ── TAB 3: NHÓM TRƯỜNG HỢP → 2 sheet số liệu + 1 sheet thông tin ── */
   if(onGroup){
     if(!GROUP_EXCEL) return;
-    const wsSum = XLSX.utils.aoa_to_sheet([GROUP_EXCEL.sumHead].concat(GROUP_EXCEL.sumBody));
-    wsSum['!cols'] = [{ wch: 16 }, { wch: 16 }].concat(CATALOG_COLUMNS.map(() => ({ wch: 16 })));
-    XLSX.utils.book_append_sheet(wb, wsSum, 'TongHopNhom');
+    const G = GROUP_EXCEL;
 
-    const wsDet = XLSX.utils.aoa_to_sheet([GROUP_EXCEL.detHead].concat(GROUP_EXCEL.detBody));
-    wsDet['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 90 }].concat(CATALOG_COLUMNS.map(() => ({ wch: 16 })));
-    XLSX.utils.book_append_sheet(wb, wsDet, 'ChiTietTruongHop');
+    /* Sheet 1: mỗi NHÓM 1 dòng. Diễn giải và danh sách TH tách riêng 2 cột */
+    const sumCols = [
+      { title: 'STT',                   type: 'int', wch: 6 },
+      { title: 'NHÓM',                               wch: 16 },
+      { title: 'DIỄN GIẢI NHÓM',                     wch: 62 },
+      { title: 'SỐ TRƯỜNG HỢP',         type: 'int', wch: 15 },
+      { title: 'DANH SÁCH TRƯỜNG HỢP',               wch: 48 }
+    ].concat(metricCols());
 
-    XLSX.writeFile(wb, 'BangBaoCao_Nhom_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    const sumRows = G.sumBody.map((g, i) =>
+      [i + 1, g.title, g.desc, g.caseCount, g.caseList]
+        .concat(metricVals(g.counts, g.rowTotal, G.denom)));
+    sumRows.push([null, 'TỔNG CỘNG', null, G.totCases, null]
+      .concat(metricVals(G.totCounts, G.inTree, G.denom)));
+
+    XLSX.utils.book_append_sheet(wb,
+      RE.xlSheet(sumCols, sumRows, { skipLastInFilter: true }), 'TongHopNhom');
+
+    /* Sheet 2: mỗi TRƯỜNG HỢP 1 dòng, mã danh mục và đường dẫn tách 2 cột */
+    const detCols = [
+      { title: 'STT',                                  type: 'int', wch: 6 },
+      { title: 'NHÓM',                                              wch: 16 },
+      { title: 'TRƯỜNG HỢP',                                        wch: 13 },
+      { title: 'MÃ DANH MỤC',                                       wch: 14 },
+      { title: 'DANH MỤC PHÁP LÝ (ĐƯỜNG DẪN ĐẦY ĐỦ)',               wch: 72 }
+    ].concat(metricCols());
+
+    const detRows = G.detBody.map((d, i) =>
+      [i + 1, d.group, d.caseLabel, d.nodeId, d.path]
+        .concat(metricVals(d.counts, d.rowTotal, G.denom)));
+
+    XLSX.utils.book_append_sheet(wb, RE.xlSheet(detCols, detRows), 'ChiTietTruongHop');
+    XLSX.utils.book_append_sheet(wb,
+      infoSheet('Bảng nhóm trường hợp — tổng hợp theo nhóm và chi tiết từng trường hợp',
+        [['Số nhóm', G.sumBody.length], ['Số trường hợp', CASE_COUNT]]), 'ThongTin');
+
+    RE.xlSave(wb, 'BangBaoCao_NhomTruongHop');
     return;
   }
 
+  /* ── TAB 2: DANH SÁCH HỒ SƠ ── */
   if(onRecords){
-    const head = RECORD_COLUMNS.map(c => c.title);
-    const body = RECORD_EXCEL_LIST.map(i => RECORD_COLUMNS.map(cd => cellValue(i, cd)));
-    ws = XLSX.utils.aoa_to_sheet([head].concat(body));
-    ws['!cols'] = RECORD_COLUMNS.map(c => ({ wch: Math.max(10, Math.min(45, parseInt(c.width) / 7 || 16)) }));
-    name = 'HoSo';
-  } else {
-    if(!CATALOG_EXCEL) return;
-    ws = XLSX.utils.aoa_to_sheet([CATALOG_EXCEL.head].concat(CATALOG_EXCEL.body));
-    ws['!cols'] = [{ wch: 62 }, { wch: 22 }].concat(CATALOG_COLUMNS.map(() => ({ wch: 16 })));
-    name = 'DanhMuc';
+    const cols = EXPORT_RECORD_COLUMNS.map(c =>
+      ({ title: c.title, type: c.type || 'text', wch: c.wch }));
+    const rows = RECORD_EXCEL_LIST.map((idx, i) =>
+      EXPORT_RECORD_COLUMNS.map(cd => exportCellValue(idx, cd, i + 1)));
+
+    XLSX.utils.book_append_sheet(wb, RE.xlSheet(cols, rows), 'HoSo');
+    XLSX.utils.book_append_sheet(wb,
+      infoSheet('Danh sách hồ sơ theo bộ lọc đang xem',
+        [['Số hồ sơ trong file', rows.length], ['Số cột trong file', cols.length]]), 'ThongTin');
+
+    RE.xlSave(wb, 'BangBaoCao_DanhSachHoSo');
+    return;
   }
 
-  XLSX.utils.book_append_sheet(wb, ws, name);
-  XLSX.writeFile(wb, `BangBaoCao_${name}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  /* ── TAB 1: DANH MỤC PHÂN LOẠI PHÁP LÝ ──
+     Cây phân loại trên web thụt đầu dòng để thấy cấp; ra Excel không thụt
+     được nên tách hẳn thành 3 cột: CẤP + MÃ DANH MỤC + ĐƯỜNG DẪN ĐẦY ĐỦ. */
+  if(!CATALOG_EXCEL) return;
+  const K = CATALOG_EXCEL;
+  const catCols = [
+    { title: 'STT',                                 type: 'int', wch: 6 },
+    { title: 'CẤP',                                 type: 'int', wch: 6 },
+    { title: 'MÃ DANH MỤC',                                      wch: 14 },
+    { title: 'TRƯỜNG HỢP',                                       wch: 13 },
+    { title: 'DANH MỤC PHÂN LOẠI PHÁP LÝ HỒ SƠ',                 wch: 58 },
+    { title: 'ĐƯỜNG DẪN ĐẦY ĐỦ',                                 wch: 72 }
+  ].concat(metricCols());
+
+  const catRows = K.rows.map((r, i) =>
+    [i + 1, r.lvl, r.id, r.caseLabel, r.title, r.path]
+      .concat(metricVals(r.counts, r.rowTotal, K.denom)));
+  catRows.push([null, null, null, null, K.totalLabel, null]
+    .concat(metricVals(K.totalCounts, K.inTree, K.denom)));
+
+  XLSX.utils.book_append_sheet(wb,
+    RE.xlSheet(catCols, catRows, { skipLastInFilter: true }), 'DanhMuc');
+  XLSX.utils.book_append_sheet(wb,
+    infoSheet('Bảng danh mục phân loại pháp lý hồ sơ',
+      [['Số dòng danh mục', K.rows.length], ['Số trường hợp', CASE_COUNT]]), 'ThongTin');
+
+  RE.xlSave(wb, 'BangBaoCao_DanhMucPhapLy');
 };
 
 /* ═══ KHỞI ĐỘNG ═══ */

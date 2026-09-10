@@ -394,6 +394,167 @@ window.ReportEngine = (function () {
     return { headers: headers, rows: rows, meta: d.meta || {} };
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     ⭐ 8. BỘ DỰNG FILE EXCEL DÙNG CHUNG (RE.xl*)
+     ═══════════════════════════════════════════════════════════
+     QUY ƯỚC XUẤT EXCEL CỦA DỰ ÁN — áp dụng cho CẢ 2 trang:
+
+       1. DÒNG 1 = TIÊU ĐỀ CỘT, dữ liệu bắt đầu từ DÒNG 2.
+          KHÔNG chèn dòng "BÁO CÁO…", KHÔNG gộp ô (merge) phía trên.
+          Thông tin báo cáo (đơn vị, thời điểm, bộ lọc) nằm ở sheet
+          riêng tên "ThongTin" ⇒ bảng dữ liệu luôn lọc/sắp xếp/pivot được.
+
+       2. MỖI Ô MỘT GIÁ TRỊ. Trên web hiển thị "123 (45,2%)" trong cùng
+          một ô, nhưng ra Excel phải TÁCH THÀNH 2 CỘT: cột số và cột %.
+          Không nhét 2 dữ kiện vào chung một ô.
+
+       3. ĐÚNG KIỂU DỮ LIỆU: số ra số (cộng/SUM được), % ra phần trăm
+          thật (0,452 định dạng 45,2%), ngày ra ngày (sắp xếp được),
+          chữ ra chữ. Ô không có dữ liệu là ô RỖNG THẬT (không phải
+          chuỗi rỗng hay dấu "—").
+
+       4. Tự canh độ rộng cột và bật AutoFilter trên vùng dữ liệu.
+
+     Cách dùng:
+        const ws = RE.xlSheet(COLS, ROWS, { skipLastInFilter: true });
+        RE.xlSave(wb, 'BangBaoCao_DanhMuc');
+     ═══════════════════════════════════════════════════════════ */
+
+  /* Định dạng số hiển thị trong Excel theo từng kiểu cột */
+  const XL_FMT = {
+    int:      '#,##0',
+    num:      '#,##0.##',
+    pct:      '0.0%',
+    date:     'dd/mm/yyyy',
+    datetime: 'dd/mm/yyyy hh:mm'
+  };
+
+  /* Chuỗi → số. Trả về null nếu KHÔNG phải số thật, để ô đó giữ nguyên
+     chữ thay vì bị đọc sai (vd số thửa "MP15" phải giữ là chữ). */
+  function xlNum(v){
+    if(typeof v === 'number') return isFinite(v) ? v : null;
+    let s = String(v == null ? '' : v).trim().replace(/\s+/g, '').replace(/%$/, '');
+    if(!s) return null;
+    let neg = false;
+    if(s.charAt(0) === '-'){ neg = true; s = s.slice(1); }
+    if(!/^[\d.,]+$/.test(s)) return null;              // có chữ cái → không phải số
+    if(s.indexOf(',') >= 0){
+      s = s.replace(/\./g, '').replace(',', '.');      // 1.234,5 (kiểu VN)
+    } else if(/^\d{1,3}(\.\d{3})+$/.test(s)){
+      s = s.replace(/\./g, '');                        // 1.234 = một nghìn hai trăm…
+    }
+    const n = parseFloat(s);
+    if(!isFinite(n)) return null;
+    return neg ? -n : n;
+  }
+
+  /* "10/08/2026 16:45" → số serial của Excel (sắp xếp / lọc theo ngày được).
+     Trả về null nếu không đúng dạng ngày. */
+  function xlDateSerial(v){
+    const m = String(v == null ? '' : v).trim()
+      .match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+    if(!m) return null;
+    const d = +m[1], mo = +m[2], y = +m[3], hh = +(m[4] || 0), mi = +(m[5] || 0);
+    if(mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const days = Math.floor(Date.UTC(y, mo - 1, d) / 86400000) + 25569;  // 25569 = 01/01/1970
+    return days + (hh * 60 + mi) / 1440;
+  }
+
+  /* Dấu thời gian cho tên file: 26-08-2026_14h30 */
+  function xlStamp(){
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() +
+           '_' + p(d.getHours()) + 'h' + p(d.getMinutes());
+  }
+  function xlNow(){
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ' ngày ' +
+           p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+
+  /* ── DỰNG 1 SHEET ──────────────────────────────────────────
+     cols : [{ title, type, wch, maxw }]   type: text|int|num|pct|date|datetime
+     rows : mảng các mảng giá trị THÔ, đúng thứ tự cols
+     opts : { skipLastInFilter: true }  → dòng cuối là TỔNG CỘNG, không cho vào AutoFilter
+  */
+  function xlSheet(cols, rows, opts){
+    opts = opts || {};
+    const aoa = [cols.map(c => c.title)];
+    const numFmt = [];                                  // ô nào cần gán định dạng số
+
+    rows.forEach((r, ri) => {
+      aoa.push(cols.map((c, ci) => {
+        const raw = r[ci];
+        const type = c.type || 'text';
+        const asText = () => {
+          const s = (raw == null) ? '' : String(raw).trim();
+          return s === '' ? null : s;                   // ô trống = ô RỖNG THẬT
+        };
+        if(type === 'text') return asText();
+
+        if(type === 'date' || type === 'datetime'){
+          const sv = xlDateSerial(raw);
+          if(sv == null) return asText();               // không phải ngày → giữ nguyên chữ
+          numFmt.push({ r: ri + 1, c: ci, z: XL_FMT[type] });
+          return sv;
+        }
+
+        let n = xlNum(raw);
+        if(n == null) return asText();                  // không phải số → giữ nguyên chữ
+        if(type === 'pct' && (String(raw).indexOf('%') >= 0 || n > 1.0000001)) n = n / 100;
+        // số nguyên thì dùng mẫu số nguyên, tránh Excel hiện "110." thừa dấu chấm
+        const z = (type === 'num' && n === Math.round(n)) ? XL_FMT.int : (XL_FMT[type] || XL_FMT.num);
+        numFmt.push({ r: ri + 1, c: ci, z: z });
+        return n;
+      }));
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    numFmt.forEach(f => {
+      const cell = ws[XLSX.utils.encode_cell({ r: f.r, c: f.c })];
+      if(cell) cell.z = f.z;
+    });
+
+    /* Độ rộng cột: lấy theo cấu hình, không có thì tự canh theo nội dung */
+    ws['!cols'] = cols.map((c, ci) => {
+      if(c.wch) return { wch: c.wch };
+      let w = String(c.title).length;
+      for(let i = 0; i < rows.length; i++){
+        const v = rows[i][ci];
+        if(v == null) continue;
+        const l = String(v).length;
+        if(l > w) w = l;
+      }
+      return { wch: Math.max(8, Math.min(c.maxw || 45, w + 2)) };
+    });
+
+    /* AutoFilter trên vùng tiêu đề + dữ liệu (bỏ dòng TỔNG CỘNG nếu có) */
+    const nData = rows.length - (opts.skipLastInFilter ? 1 : 0);
+    if(nData > 0){
+      ws['!autofilter'] = {
+        ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: nData, c: cols.length - 1 } })
+      };
+    }
+    return ws;
+  }
+
+  /* Sheet "ThongTin": 2 cột Mục | Nội dung. Mọi thứ mô tả báo cáo
+     (đơn vị, thời điểm, bộ lọc đang bật…) dồn hết vào đây để bảng dữ
+     liệu bên kia sạch tuyệt đối. pairs = [['Mục','Nội dung'], …] */
+  function xlInfoSheet(pairs){
+    const rows = pairs.filter(Boolean).map(p =>
+      [p[0], typeof p[1] === 'number' ? p[1] : (p[1] == null ? '' : String(p[1]))]);
+    const ws = XLSX.utils.aoa_to_sheet([['MỤC', 'NỘI DUNG']].concat(rows));
+    ws['!cols'] = [{ wch: 34 }, { wch: 78 }];
+    return ws;
+  }
+
+  /* Ghi file: <tên>_26-08-2026_14h30.xlsx */
+  function xlSave(wb, prefix){
+    XLSX.writeFile(wb, prefix + '_' + xlStamp() + '.xlsx');
+  }
+
   /* ═══ EXPORT ═══ */
   return {
     EMPTY: EMPTY,
@@ -410,7 +571,15 @@ window.ReportEngine = (function () {
     classifyRows: classifyRows,
     fmt: fmt, pct: pct, escH: escH,
     removeAccents: removeAccents,
-    loadPayload: loadPayload
+    loadPayload: loadPayload,
+    /* Bộ dựng file Excel dùng chung — xem mục 8 */
+    xlSheet: xlSheet,
+    xlInfoSheet: xlInfoSheet,
+    xlSave: xlSave,
+    xlNum: xlNum,
+    xlDateSerial: xlDateSerial,
+    xlStamp: xlStamp,
+    xlNow: xlNow
   };
 
 })();
