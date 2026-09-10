@@ -269,7 +269,7 @@ a:hover { text-decoration: underline; }
   color: var(--color-snow);
 }
 
-select, input[type=search] {
+select, input[type=search], input[type=date] {
   font-family: var(--font-inter);
   font-size: 13px;
   border: 1px solid var(--color-graphite);
@@ -776,12 +776,13 @@ select:focus, input:focus {
 
 .col-4 { grid-column: span 4; }
 .col-6 { grid-column: span 6; }
+.col-8 { grid-column: span 8; }
 .col-12 { grid-column: span 12; }
 .cbox { position: relative; height: 320px; }
 .cbox.small { height: 260px; }
 .cbox.medium { height: 340px; }
 
-@media(max-width:960px) { .col-4, .col-6 { grid-column: span 12; } }
+@media(max-width:960px) { .col-4, .col-6, .col-8 { grid-column: span 12; } }
 
 /* ── Data Tables ── */
 .tbl-wrap {
@@ -1190,6 +1191,128 @@ footer {
   text-align: center;
   font-family: var(--font-mono);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TAB 7 — NHẬT KÝ CHUYỂN BƯỚC (MOVE AUDIT TRAIL)
+   ═══════════════════════════════════════════════════════════ */
+.audit-hint {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--color-ash);
+  background: var(--color-deep-coal);
+  border: 1px solid var(--color-steel-border);
+  border-left: 3px solid var(--color-blue-cornflower);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.audit-hint b { color: var(--color-snow); font-weight: 600; }
+
+.audit-bar {
+  background: var(--color-card-carbon);
+  border: 1px solid var(--color-steel-border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.audit-bar label {
+  display: block;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  color: var(--color-ash);
+  margin-bottom: 6px;
+  font-weight: 400;
+}
+
+.audit-bar select,
+.audit-bar input {
+  width: 100%;
+  font-size: 12.5px;
+  padding: 7px 12px;
+}
+
+.audit-quick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.audit-quick .qlabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  color: var(--color-ash);
+}
+
+.audit-quick .qrange {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-fog);
+}
+
+.audit-quick .btn { padding: 6px 12px; font-size: 12.5px; }
+
+.audit-quick .btn.on {
+  border-color: var(--color-blue-cornflower);
+  color: var(--color-blue-cornflower);
+  background: rgba(103, 152, 255, 0.12);
+}
+
+.audit-per {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.audit-per label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.85px;
+  text-transform: uppercase;
+  color: var(--color-ash);
+}
+
+.audit-per select { font-size: 12.5px; padding: 6px 10px; }
+
+table.dt.audit-table { min-width: 1180px; }
+
+/* Ô thời điểm chuyển: giờ nổi bật, ngày phụ bên dưới */
+.ts-cell {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--color-snow);
+}
+
+.ts-cell small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-fog);
+  margin-top: 2px;
+}
+
+/* Luồng "bước cũ → bước mới" */
+.flow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  min-width: 260px;
+}
+
+.flow .st-from { color: var(--color-ash); }
+.flow .st-to { color: var(--color-snow); font-weight: 600; }
+.flow .arrow { color: var(--color-blue-cornflower); font-family: var(--font-mono); flex: none; }
 
 /* ── Print Report Wrapper (Screen Hidden, Print Visible) ── */
 .print-report-wrapper {

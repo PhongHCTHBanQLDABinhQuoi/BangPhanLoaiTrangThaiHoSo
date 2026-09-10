@@ -66,13 +66,13 @@ Frontend `fetch('/api/data')` thất bại → **tự fallback** sang `fetch('ca
 | File | Dòng | Vai trò |
 |---|---:|---|
 | `server.py` | ~670 | Backend: gọi Base API, chuẩn hoá dữ liệu, HTTP server, cache RAM/đĩa/gzip, SSE, webhook, route `/bangbaocao`. Có mode CLI `--sync`/`--once`. |
-| `index.html` | ~344 | Dashboard: khung 6 tab + modal chi tiết + **template in báo cáo** (`#printReportWrapper`). Chỉ là skeleton, mọi nội dung do JS bơm vào. |
-| **`js/report-engine.js`** | ~420 | ⭐ **LÕI NGHIỆP VỤ DÙNG CHUNG** cho cả 2 trang: `TEAM_MAP`/`resolveTeam`/`enrichTeam`, `normGCN`, **`TREE_SPEC`** (cây phân loại pháp lý), `classifyRows()`, `loadPayload()`. **Nguồn sự thật duy nhất** — sửa ở đây là sửa cho cả dashboard lẫn trang báo cáo. |
-| `js/app.js` | ~1.400 | Logic riêng của dashboard: filter engine, 13 hàm render, KPI tháng, export Excel, print. Gọi lõi qua `RE.*`. |
+| `index.html` | ~435 | Dashboard: khung 7 tab + modal chi tiết + **template in báo cáo** (`#printReportWrapper`). Chỉ là skeleton, mọi nội dung do JS bơm vào. |
+| **`js/report-engine.js`** | ~420 | ⭐ **LÕI NGHIỆP VỤ DÙNG CHUNG** cho cả 2 trang: `TEAM_MAP`/`resolveTeam`/`enrichTeam`, `normGCN`, **`TREE_SPEC`** (cây phân loại pháp lý), `classifyRows()`, `loadPayload()`, **bộ dựng file Excel `RE.xlSheet/xlInfoSheet/xlSave`** (mục 8). **Nguồn sự thật duy nhất** — sửa ở đây là sửa cho cả dashboard lẫn trang báo cáo. |
+| `js/app.js` | ~2.100 | Logic riêng của dashboard: filter engine, 14 hàm render, KPI tháng, **nhật ký chuyển bước (tab 7, mục 6.1)**, export Excel, print. Gọi lõi qua `RE.*`. |
 | `report-table.html` | ~150 | **Trang `/bangbaocao`** — bảng WEB tra cứu phân loại pháp lý, 2 chế độ xem. Xem mục 7. |
 | `js/report-table.js` | ~570 | Logic trang tra cứu. **`CATALOG_COLUMNS` + `RECORD_COLUMNS` ở đầu file = nơi thêm cột mới.** |
 | `css/report-table.css` | ~180 | Chỉ phần RIÊNG của trang tra cứu (dòng bấm được, tag danh mục, sticky header). Nền tảng dùng chung `dovetail.css`. |
-| `css/dovetail.css` | 1.482 | Design system Dovetail (dark) + layout wallboard + **print engine A4 landscape** + responsive 1024×768. Dùng cho **cả 2 trang**. |
+| `css/dovetail.css` | ~1.605 | Design system Dovetail (dark) + layout wallboard + **print engine A4 landscape** + responsive 1024×768. Dùng cho **cả 2 trang**. |
 | `.claude/launch.json` | — | Cấu hình để Claude Code / IDE tự khởi động server (`python server.py`, port 8080). |
 | `cache_payload.json` | — | Snapshot dữ liệu (~2,9 MB, 2.225 hồ sơ). Do Actions tự cập nhật. |
 | `DESIGN.md` | — | Spec design system Dovetail gốc (token màu, typography, do/don't). Tham chiếu khi thêm UI mới. |
@@ -150,7 +150,9 @@ Cột GCN được **filter strict bằng `normGCN`**, khác mọi cột khác (
 
 ### 5.3 `Lịch sử chuyển bước` — JSON string, khoá viết tắt
 `server.py:219` nén mỗi bước thành: `u` (username), `s` (stage_id), `st` (stage_start, unix), `et` (stage_end), `p` (past 0/1), `d` (duration, **giây**).
-Frontend `JSON.parse` cột này ở **4 chỗ**: month picker, `renderStageBottlenecks`, `renderMonthlyKPI`, modal timeline. Luôn bọc `try/catch`.
+Frontend `JSON.parse` cột này ở **5 chỗ**: month picker, `renderStageBottlenecks`, `renderMonthlyKPI`, modal timeline, và **`buildMoveLog()`** (tab 7). Luôn bọc `try/catch`.
+⚠️ `st`/`et` có khi là **chuỗi**, có khi là **số** (2.817/14.949 bản ghi là chuỗi) ⇒ luôn `parseInt` trước khi so sánh.
+⚠️ `d` **không phải** thời gian xử lý thực tế — đó là **hạn SLA cấu hình sẵn** của giai đoạn (bước 1 luôn 345.600s, bước 2 luôn 86.400s…). Muốn thời gian THỰC phải lấy `et - st`.
 Đổi ngày: `d / 86400`. Gom theo tháng: `new Date(st*1000)` → key `YYYY-MM`.
 
 ### 5.4 SLA (tính ở **backend**, `server.py:233`)
@@ -188,7 +190,7 @@ Cảnh báo theo tỷ lệ trễ: `≥30%` 🚨 Nghiêm Trọng · `10–30%` �
 
 ---
 
-## 6. Giao diện — 6 tab
+## 6. Giao diện — 7 tab
 
 | Tab | Nội dung | Hàm render chính |
 |---|---|---|
@@ -198,14 +200,50 @@ Cảnh báo theo tỷ lệ trễ: `≥30%` 🚨 Nghiêm Trọng · `10–30%` �
 | **4. Khối Lượng Theo Tổ** | Bar ngang theo Tổ + Top 15 cán bộ | `renderDeep` |
 | **5. Tiến Độ & Trễ Hạn** | Bảng bottleneck 8 giai đoạn + danh sách 30 hồ sơ trễ cần đôn đốc | `renderStageBottlenecks`, `renderSLATable` |
 | **6. Danh Sách Chi Tiết** | Bảng đầy đủ: search bỏ dấu (multi-token AND), sort mọi cột (số/chuỗi/STT), phân trang 20 dòng, click mở modal | `renderTable`, `window.openDetail` |
+| **7. Nhật Ký Chuyển Bước** | **Truy vết ai chuyển hồ sơ, chuyển lúc nào** — lọc theo ngày × bước × người chuyển (song song). Xem mục 6.1 | `buildMoveLog`, `renderAudit` |
 
 ### Cơ chế chung
-- **`render()`** (`app.js:391`) = orchestrator: destroy hết chart cũ → gọi **13 hàm render** trong `try/catch` riêng ⇒ 1 hàm lỗi không làm chết cả trang. Xem lỗi ở Console.
+- **`render()`** (`app.js:391`) = orchestrator: destroy hết chart cũ → gọi **14 hàm render** trong `try/catch` riêng ⇒ 1 hàm lỗi không làm chết cả trang. Xem lỗi ở Console.
 - **Filter bar** (`buildFilterBar`) tự sinh 9 dropdown: Giai đoạn, Tổ/Phòng, Trạng thái, Trạng thái SLA, Người phụ trách, Hiện trạng, GCN, Pháp lý tặng cho, Tách thửa. Mọi filter là **AND**, chia sẻ **1 state `filters` toàn cục** cho cả 6 tab.
 - **Quick filter:** 🔴 Chỉ xem Trễ Hạn SLA · ⚠️ Chỉ xem Không GCN · 🔄 Xóa toàn bộ lọc.
 - **In báo cáo** (`#btnPrint`): xoá `document.title` (bỏ header trình duyệt), chèn timestamp, `window.print()`. CSS `@media print` ẩn toàn bộ UI, chỉ hiện `#printReportWrapper` — **A4 landscape**, Times New Roman 11pt, có 3 ô chữ ký (Người lập / Phụ trách phòng / Giám đốc).
-- **Export Excel** (SheetJS): xuất **đúng tập đang lọc**, bỏ cột `Lịch sử chuyển bước`, tên file `BaoCao_KPI_BinhQuoiThanhDa_<YYYY-MM-DD>.xlsx`.
+- **Export Excel** (SheetJS): xuất **đúng tập đang thấy trên bảng** (filter bar **+ ô tìm kiếm**), 41 cột = STT + 39 cột Base + cột `Tổ/Phòng`, bỏ `Lịch sử chuyển bước`. Ra **2 sheet**: `DuLieuKPI` (bảng sạch, dòng 1 là tiêu đề) + `ThongTin` (đơn vị, thời điểm, bộ lọc đang bật). Tên file `BaoCaoKPI_BinhQuoiThanhDa_<dd-mm-yyyy_HHhMM>.xlsx`. Cấu hình cột: `EXPORT_COLUMNS` ở `js/app.js`. Xem mục 8.
 - **Auto-refresh đã bị TẮT có chủ ý** — `setAuto()` (`app.js:1566`) là no-op. Chỉ cập nhật khi bấm nút hoặc nhận SSE.
+
+### 6.1 Tab 7 — Nhật ký chuyển bước (`buildMoveLog` + `renderAudit`, `js/app.js`)
+
+Trả lời đúng 1 câu hỏi của Ban Giám đốc: **"Hồ sơ này AI chuyển, chuyển LÚC NÀO?"**
+
+**Cách dựng 1 lượt chuyển** — `buildMoveLog()` chạy 1 lần mỗi lần nạp dữ liệu (trong `applyData`), ghép **2 bước liền nhau** trong cột *Lịch sử chuyển bước*:
+
+| Trường | Lấy từ | Ý nghĩa |
+|---|---|---|
+| Thời điểm chuyển | `et[i]` (thiếu thì `st[i+1]`) | lúc hồ sơ **rời** bước cũ |
+| **Người chuyển** | `u[i]` | cán bộ phụ trách bước **vừa hoàn tất** — người bấm chuyển đi |
+| **Người nhận** | `u[i+1]` | cán bộ phụ trách bước kế tiếp |
+| Thời gian giữ | `et[i] - st[i]` | thời gian **thực** ở bước cũ (**không** dùng `d`) |
+| Hướng chuyển | so số thứ tự trong tên giai đoạn | `fwd` tiến · `back` trả về · `fail`/`reopen` Failed · `same` |
+
+Bước **cuối cùng** (đang xử lý) không sinh sự kiện vì chưa chuyển đi đâu ⇒ **2.224 hồ sơ → 12.725 lượt chuyển** (số liệu 10/08/2026).
+
+**Cơ sở của quy ước "người chuyển = `u[i]`":** kiểm trên dữ liệu thật, `u` của bước **cuối** trùng *Người phụ trách* ở **2.217/2.224** hồ sơ (99,7%) ⇒ `u` là **người phụ trách bước đó**, không phải người đẩy hồ sơ vào bước đó.
+
+> ⚠️ **Số của tab 7 lệch tab 2 là ĐÚNG THEO THIẾT KẾ.** Tab 2 đếm theo `st` và gán cho **người NHẬN** bước; tab 7 gán cho **người CHUYỂN ĐI**. Đừng "sửa" cho hai tab bằng nhau.
+
+**Bộ lọc — 8 tiêu chí chạy song song (AND)**, cộng thêm bộ lọc chung ở đầu trang: từ ngày · đến ngày · chuyển đi từ bước · chuyển đến bước · người chuyển · người nhận · hướng chuyển · ô tìm kiếm (bỏ dấu, multi-token). Kèm 5 nút khoảng nhanh (Hôm nay / 7 / 30 ngày / Tháng này / Tất cả).
+
+- Ngày dùng `<input type="date">`; `auditTs(s, isEnd)` đổi sang unix, mốc "đến ngày" cộng thêm 86.400s ⇒ **bao trọn cả ngày cuối**.
+- **Đếm chéo:** mỗi dropdown hiện số lượt còn lại *sau khi bỏ chính tiêu chí của nó* (`auditEvents(visSet, skipKey)`) ⇒ chọn 1 cán bộ thì ô "bước" chỉ còn đúng các bước người đó từng chuyển.
+- Bộ lọc chung đầu trang lọc **hồ sơ**, tab 7 lọc **lượt chuyển** ⇒ nối nhau bằng `visSet = new Set(filteredRows())`, so sánh **theo tham chiếu dòng** (`e.row`) nên O(1), không dùng `rows.indexOf`.
+- `bindAuditControls()` gắn sự kiện **đúng 1 lần** (`_auditBound`) — gắn lại mỗi lần render sẽ làm mất con trỏ khi đang gõ ô tìm kiếm.
+- Chart của tab 7 để riêng ở `_auditCharts`, **không** dùng chung mảng `charts` của `render()`, vì tab 7 tự vẽ lại khi đổi bộ lọc riêng mà không chạy `render()` toàn trang.
+
+**Nội dung tab:** 5 thẻ chỉ số → 2 biểu đồ (lượt/ngày + Top 10 cán bộ chuyển) → **bảng nhật ký chi tiết** (sort 7 cột, phân trang 50/100/200/tất cả, bấm dòng mở modal hồ sơ) → **bảng tổng hợp trách nhiệm theo cán bộ chuyển bước**.
+
+**Cạm bẫy đã xử lý:**
+- ~1% lượt chuyển Base **không trả username**, chỉ có `mover_id` dạng số (`server.py:219` đã fallback). Hiển thị `ID <số>` qua `auditUserLabel()`, và `auditTeamOf()` để **trống tổ** thay vì gán nhầm Tổ 1.
+- Cột số ngày trong Excel phải truyền **số thật**, không phải chuỗi: `RE.xlNum` đọc `"0.970"` theo kiểu nghìn của VN thành **970**.
+- Lựa chọn đang chọn mà hết dữ liệu vẫn được giữ trong dropdown dạng `(0)`, nếu không trình duyệt tự nhảy về "Tất cả" và người dùng tưởng mất lọc.
 
 ### Design system
 Theo `DESIGN.md` — **Dovetail dark**: canvas `#0a0a0a` → section `#141414` → card `#1e1e1e` → viền `#313131`. Accent **duy nhất** `#6798ff` (cornflower). Font Inter + JetBrains Mono (số liệu, eyebrow). **Radius 8px, không dùng shadow/gradient** — phân tầng bằng tone. Responsive breakpoint quan trọng: `@media (max-width:1024px), (max-height:768px)` (`dovetail.css:1348`) — tối ưu riêng cho màn hình wallboard.
@@ -286,7 +324,7 @@ Mọi bộ lọc (ô tìm kiếm + Tổ + SLA + Giai đoạn + danh mục/nhóm 
 - Ô tìm kiếm: **không cần gõ dấu**, nhiều từ khoá = AND, quét **toàn bộ 41 cột** (tìm được cả Job ID, số tờ, số thửa, tên hộ dân, username cán bộ…).
 - Filter SLA gộp mọi biến thể `Trễ N ngày` thành một lựa chọn **Trễ**.
 - Nút `🖨️ In Bảng Danh Mục` in Tab 1 ra **A4 ngang có 3 ô chữ ký** (dùng lại `@media print` của `dovetail.css`, tự bỏ cột nút bấm).
-- Nút `⬇️ Xuất Excel` xuất **đúng tab đang xem** (danh mục hoặc danh sách hồ sơ đang lọc).
+- Nút `⬇️ Xuất Excel` xuất **đúng tab đang xem**: Tab 1 → sheet `DanhMuc`, Tab 2 → sheet `HoSo` (29 cột, đầy đủ hơn bảng web), Tab 3 → 2 sheet `TongHopNhom` + `ChiTietTruongHop`. Mọi file đều kèm sheet `ThongTin`. Xem mục 8.
 
 ### ⭐ Thêm cột mới — mở `js/report-table.js`, sửa ở đầu file
 
@@ -295,7 +333,8 @@ Hai mảng cấu hình, mỗi mảng có sẵn **ví dụ comment** bên trên �
 | Mảng | Dùng cho | Cách thêm |
 |---|---|---|
 | `CATALOG_COLUMNS` | cột số ở Tab 1 | thêm 1 object `{ key, title, width, pct, match }`. `match: r => điều_kiện` quyết định hồ sơ nào được đếm; `match: null` = đếm tất cả. |
-| `RECORD_COLUMNS` | cột ở Tab 2 | thêm 1 object `{ title, col, width, kind }`. `col` là tên trong `C.*`. |
+| `RECORD_COLUMNS` | cột ở Tab 2 **trên web** | thêm 1 object `{ title, col, width, kind }`. `col` là tên trong `C.*`. |
+| `EXPORT_RECORD_COLUMNS` | cột ở Tab 2 **trong file Excel** | thêm 1 object `{ title, col, type, wch }`. Tách riêng vì web chỉ hiện 13 cột cho vừa màn hình, còn Excel xuất đủ 29 cột. |
 
 Trong `match` dùng `r[C.<tên>]` để lấy giá trị ô — bảng `C` được dò **theo tên header** (hàm `buildColIndex`) nên không vỡ khi Base đổi thứ tự cột. Cần cột Base chưa có trong `C` thì thêm 1 dòng vào `buildColIndex`.
 
@@ -311,7 +350,60 @@ Ví dụ thêm cột "đếm hồ sơ trễ hạn trong từng danh mục pháp 
 
 ---
 
-## 8. Lệnh thường dùng
+## 8. Quy ước xuất Excel (áp dụng cho CẢ 2 trang)
+
+Toàn bộ 5 nút xuất Excel đi qua **một bộ dựng chung** trong `js/report-engine.js`
+(mục 8 của file đó): `RE.xlSheet(cols, rows, opts)`, `RE.xlInfoSheet(pairs)`,
+`RE.xlSave(wb, tên)`. Sửa quy ước là sửa một chỗ, cả 5 file xuất ra đổi theo.
+
+**4 nguyên tắc — đừng phá:**
+
+1. **Dòng 1 là tiêu đề cột, dữ liệu từ dòng 2.** Không chèn dòng "BÁO CÁO…",
+   không gộp ô (merge) phía trên. Mở file lên là AutoFilter / Sort / PivotTable
+   dùng được ngay. Mọi thứ mô tả báo cáo (đơn vị, dự án, thời điểm xuất, nguồn
+   dữ liệu, **bộ lọc đang bật**) nằm ở sheet riêng tên `ThongTin`.
+2. **Mỗi ô một giá trị.** Trên web hiển thị `123 (45,2%)` trong cùng một ô, nhưng
+   ra Excel phải **tách thành 2 cột**: cột số và cột `%`. Tương tự, cây phân loại
+   trên web thụt đầu dòng để thấy cấp — ra Excel tách hẳn thành `CẤP` +
+   `MÃ DANH MỤC` + `ĐƯỜNG DẪN ĐẦY ĐỦ`.
+3. **Đúng kiểu dữ liệu** (khai bằng `type` ở cấu hình cột):
+   `int` `num` = số (SUM được) · `pct` = phần trăm thật (92% lưu là `0,92`,
+   định dạng `0.0%`) · `date` `datetime` = ngày thật (sắp xếp theo ngày được) ·
+   bỏ trống = chữ. Ô nào **không** đúng kiểu thì **tự giữ nguyên chữ** — số thửa
+   `MP15` không bị đọc thành `15`. Ô không có dữ liệu là **ô rỗng thật**
+   (không phải chuỗi rỗng, không phải dấu `—`).
+4. **Tự canh độ rộng cột + bật AutoFilter** trên vùng dữ liệu. Bảng nào có dòng
+   `TỔNG CỘNG` thì truyền `{ skipLastInFilter: true }` để dòng tổng nằm ngoài
+   vùng lọc, không bị lọc mất.
+
+**5 file xuất ra:**
+
+| Bấm ở đâu | Tên file | Sheet |
+|---|---|---|
+| Dashboard `⬇️ Xuất Excel Dữ Liệu Lọc` | `BaoCaoKPI_BinhQuoiThanhDa_…` | `DuLieuKPI` (41 cột) + `ThongTin` |
+| `/bangbaocao` Tab 1 | `BangBaoCao_DanhMucPhapLy_…` | `DanhMuc` (14 cột) + `ThongTin` |
+| `/bangbaocao` Tab 2 | `BangBaoCao_DanhSachHoSo_…` | `HoSo` (29 cột) + `ThongTin` |
+| `/bangbaocao` Tab 3 | `BangBaoCao_NhomTruongHop_…` | `TongHopNhom` + `ChiTietTruongHop` + `ThongTin` |
+| Dashboard Tab 7 `⬇️ Xuất Excel Nhật Ký` | `NhatKyChuyenBuoc_BinhQuoiThanhDa_…` | `NhatKyChuyenBuoc` (18 cột) + `TongHopNguoiChuyen` + `ThongTin` |
+
+Tên file luôn có dấu thời gian `dd-mm-yyyy_HHhMM` ⇒ xuất 2 lần trong ngày không đè nhau.
+
+**Sửa cột trong file Excel** — chỉ sửa 3 mảng cấu hình, không đụng bộ dựng:
+
+| Mảng | Ở đâu | Quyết định |
+|---|---|---|
+| `EXPORT_COLUMNS` | `js/app.js` | cột của file dashboard. Cột Base nào chưa khai sẽ **tự nối vào cuối** dạng chữ ⇒ Base thêm trường mới không mất dữ liệu. |
+| `EXPORT_RECORD_COLUMNS` | `js/report-table.js` | cột của sheet `HoSo` |
+| `CATALOG_COLUMNS` | `js/report-table.js` | thêm 1 cột ở đây là 3 sheet `DanhMuc` / `TongHopNhom` / `ChiTietTruongHop` **tự có thêm 2 cột** (số + %) |
+| `AUDIT_EXPORT_COLUMNS` | `js/app.js` | cột của sheet `NhatKyChuyenBuoc` (tab 7). Mỗi dòng có thêm hàm `get(e, i)` lấy giá trị từ 1 lượt chuyển. |
+
+⚠️ SheetJS bản community **không ghi được định dạng chữ** (in đậm, viền, màu nền)
+và **không đóng băng dòng tiêu đề** — đó là tính năng bản Pro. Đừng mất công thêm
+`cellStyles` hay `!freeze`, ghi ra file sẽ bị bỏ qua.
+
+---
+
+## 9. Lệnh thường dùng
 
 ```bash
 python server.py
@@ -332,7 +424,7 @@ git pull --rebase
 
 ---
 
-## 9. Cạm bẫy & nợ kỹ thuật đã biết
+## 10. Cạm bẫy & nợ kỹ thuật đã biết
 
 **Bảo mật — cần xử lý:**
 1. 🔴 **`ACCESS_TOKEN_V2` hardcode ở `server.py:37` và đã commit vào repo GitHub.** Nếu repo là public thì token đang bị lộ. Nên chuyển sang GitHub Secret + `os.environ` và **revoke token cũ** trên Base. `HUONG-DAN.txt` mục 7 cũng dặn không gửi `server.py` ra ngoài.
@@ -348,27 +440,30 @@ git pull --rebase
 **Lưu ý vận hành:**
 8. Thứ tự **23 cột custom** phụ thuộc thứ tự gặp field trong dữ liệu Base ⇒ **đừng bao giờ hardcode index cột**, luôn dùng `ci()`.
 9. `cache_payload.json` gần như luôn `M` trong `git status` do Actions. Đừng commit đè mà không pull.
+9b. **7 username có chuyển bước nhưng CHƯA có trong `TEAM_MAP`** (kiểm 10/09/2026): `hiennv`, `quangpd`, `thanhlq`, `trinhntt`, `namlh`, `thanhtdd`, `duyentk` ⇒ đang bị gán mặc định **Tổ NV BT 1** ở tab 7 và ở mọi chỗ tra `teamOf`. Bổ sung vào `TEAM_MAP` (`js/report-engine.js`) khi biết tổ thật.
 10. Trên GitHub Pages: SSE + webhook + force-sync **không hoạt động**; dữ liệu trễ tối đa 30 phút.
 11. `localStorage['kpi_cache_v2']` giữ payload để hiện tức thì. Nếu người dùng báo "số liệu cũ" → **hard reload** (Ctrl+Shift+R) hoặc clear localStorage.
 12. Tab 1 dùng `height: calc(100vh - 165px); overflow: hidden` — thêm phần tử vào tab này sẽ **bị cắt**, không tự scroll. Đây là chủ ý (wallboard 1 màn hình).
 
 ---
 
-## 10. Quy ước khi sửa code
+## 11. Quy ước khi sửa code
 
 - **Toàn bộ text UI, comment, commit message: tiếng Việt.** Tên biến/hàm: tiếng Anh.
 - Không thêm framework, không thêm build step, không thêm dependency ngoài. Giữ nguyên triết lý **zero-build, chạy bằng double-click**.
 - Thêm thư viện mới → tải vào `libs/`, khai báo trong `LIB_SOURCES` (`server.py:54`) **và** thêm fallback CDN `document.write` trong `<head>`.
 - **Logic nghiệp vụ dùng chung phải để ở `js/report-engine.js`**, không copy sang `app.js` hay `report-table.js`. Engine không được khai báo biến toàn cục nào ngoài `window.ReportEngine` (nếu không sẽ đụng `const` của `app.js` → SyntaxError cả trang). **Thêm hàm mới vào engine thì nhớ thêm vào khối `return {...}` ở cuối** — quên là trang gọi sẽ ném `TypeError: RE.xxx is not a function` và mọi thứ phía sau đứng im.
 - Thêm khối render mới trên dashboard → viết hàm `renderXxx(data)` rồi thêm 1 dòng `try{...}catch{}` vào `render()` trong `app.js`.
+- Thêm cột vào file Excel nhật ký chuyển bước → chỉ sửa `AUDIT_EXPORT_COLUMNS` trong `js/app.js`.
 - Thêm cột vào trang tra cứu → chỉ sửa `CATALOG_COLUMNS` / `RECORD_COLUMNS` trong `js/report-table.js`, **không** sửa engine.
+- **Sửa file Excel xuất ra → chỉ sửa mảng cấu hình cột** (`EXPORT_COLUMNS`, `EXPORT_RECORD_COLUMNS`, `CATALOG_COLUMNS`), **không** viết `XLSX.utils.aoa_to_sheet` mới ở từng nút. Bộ dựng chung `RE.xlSheet` lo kiểu dữ liệu, độ rộng cột và AutoFilter — đọc mục 8 trước khi đụng vào.
 - Màu sắc/khoảng cách: dùng CSS variable của Dovetail, **đừng hardcode hex mới**. Đọc `DESIGN.md` phần *Do's and Don'ts* trước khi thêm UI.
 - Sửa cây phân loại pháp lý → chỉ sửa `TREE_SPEC`; nhớ **bản in dùng chung dữ liệu**, phải kiểm tra cả Print Preview.
 - Thay đổi cấu trúc payload ở `server.py` → phải chạy `python server.py --sync` và kiểm tra lại cả 6 tab, vì frontend dò cột theo tên header.
 
 ---
 
-## 11. Bối cảnh
+## 12. Bối cảnh
 
 - Repo: `PhongHCTHBanQLDABinhQuoi/BangPhanLoaiTrangThaiHoSo` · nhánh `main` (không có nhánh phụ, deploy trực tiếp).
 - Lịch sử commit: 2 commit tính năng gần nhất là **redesign Tab 1 thành wallboard 1 màn hình** và **thêm data label % + tối ưu layout 1024×768**; phần còn lại là commit tự động của Actions.

@@ -48,6 +48,7 @@
   <button class="tab-btn" data-tab="tab-team">👥 4. Khối Lượng Theo Tổ</button>
   <button class="tab-btn" data-tab="tab-sla">⏱️ 5. Tiến Độ &amp; Trễ Hạn <span class="badge-count" id="countOverdue" style="color:var(--red)">0</span></button>
   <button class="tab-btn" data-tab="tab-table">📋 6. Danh Sách Chi Tiết</button>
+  <button class="tab-btn" data-tab="tab-audit">🔀 7. Nhật Ký Chuyển Bước <span class="badge-count" id="countMoves">0</span></button>
 </div>
 
 <main class="main">
@@ -275,6 +276,95 @@
         <button class="btn" id="prevPage">‹ Trước</button>
         <span id="pageInfo"></span>
         <button class="btn" id="nextPage">Sau ›</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       TAB 7: NHẬT KÝ CHUYỂN BƯỚC (MOVE AUDIT TRAIL)
+       Truy vết: ai chuyển hồ sơ qua bước nào, vào lúc nào.
+       Nguồn: cột "Lịch sử chuyển bước" (JSON) của Base Workflow.
+       ═══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane hidden" id="tab-audit">
+    <div class="sec"><span class="sec-eyebrow">MOVE AUDIT TRAIL</span><h2 class="sec-title">🔀 Nhật Ký Chuyển Bước — Ai Chuyển, Chuyển Lúc Nào</h2></div>
+
+    <div class="audit-hint">
+      Mỗi dòng dưới đây là <b>một lượt hồ sơ được chuyển qua bước kế tiếp</b> trên Base Workflow.
+      <b>Người chuyển</b> = cán bộ phụ trách bước vừa hoàn tất (người bấm chuyển đi) ·
+      <b>Người nhận</b> = cán bộ phụ trách bước kế tiếp ·
+      <b>Thời điểm chuyển</b> = lúc hồ sơ rời khỏi bước cũ.
+      Các bộ lọc bên dưới áp dụng <b>đồng thời (AND)</b> và cộng thêm bộ lọc chung ở đầu trang.
+    </div>
+
+    <!-- Bộ lọc riêng của nhật ký: ngày + bước + người chuyển, lọc song song -->
+    <div class="audit-bar">
+      <div><label for="auditFrom">📅 Từ ngày</label><input type="date" id="auditFrom"></div>
+      <div><label for="auditTo">📅 Đến ngày</label><input type="date" id="auditTo"></div>
+      <div><label for="auditStFrom">Chuyển ĐI từ bước</label><select id="auditStFrom"></select></div>
+      <div><label for="auditStTo">Chuyển ĐẾN bước</label><select id="auditStTo"></select></div>
+      <div><label for="auditBy">Người chuyển</label><select id="auditBy"></select></div>
+      <div><label for="auditRecv">Người nhận</label><select id="auditRecv"></select></div>
+      <div><label for="auditDir">Hướng chuyển</label><select id="auditDir"></select></div>
+      <div><label for="auditSearch">Tìm kiếm</label><input type="search" id="auditSearch" placeholder="Tên hộ dân, Job ID, cán bộ…"></div>
+    </div>
+
+    <div class="audit-quick">
+      <span class="qlabel">Khoảng nhanh</span>
+      <button class="btn btn-ghost" data-range="today">Hôm nay</button>
+      <button class="btn btn-ghost" data-range="7">7 ngày qua</button>
+      <button class="btn btn-ghost" data-range="30">30 ngày qua</button>
+      <button class="btn btn-ghost" data-range="month">Tháng này</button>
+      <button class="btn btn-ghost" data-range="all">Tất cả</button>
+      <span style="flex:1"></span>
+      <span class="qrange" id="auditRangeNote"></span>
+      <button class="btn btn-ghost" id="btnAuditReset">🔄 Xóa Lọc Nhật Ký</button>
+      <button class="btn btn-blue" id="btnAuditExport">⬇️ Xuất Excel Nhật Ký</button>
+    </div>
+
+    <div class="hero" id="auditHeroStats"></div>
+    <div class="cgrid" id="auditChartGrid"></div>
+
+    <div class="sec"><span class="sec-eyebrow">MOVE LOG LEDGER</span><h2 class="sec-title">📜 Nhật Ký Chi Tiết Từng Lượt Chuyển Bước</h2></div>
+    <div class="tbl-wrap" style="margin-bottom:28px">
+      <div class="tbl-hdr">
+        <h3>Lượt chuyển bước <span id="auditRowCount"></span></h3>
+        <div class="audit-per">
+          <label for="auditPerSelect">Số dòng mỗi trang</label>
+          <select id="auditPerSelect">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+            <option value="0">Tất cả</option>
+          </select>
+        </div>
+      </div>
+      <div class="tscroll"><table class="dt audit-table" id="auditTable"><thead></thead><tbody></tbody></table></div>
+      <div class="pager">
+        <button class="btn" id="auditPrev">‹ Trước</button>
+        <span id="auditPageInfo"></span>
+        <button class="btn" id="auditNext">Sau ›</button>
+      </div>
+    </div>
+
+    <div class="sec"><span class="sec-eyebrow">MOVER ACCOUNTABILITY</span><h2 class="sec-title">👤 Tổng Hợp Trách Nhiệm Theo Cán Bộ Chuyển Bước</h2></div>
+    <div class="tbl-wrap">
+      <div class="tscroll">
+        <table class="dt" id="auditByUserTable">
+          <thead>
+            <tr>
+              <th>Cán Bộ Chuyển Bước</th>
+              <th>Tổ / Phòng</th>
+              <th>Số Lượt Chuyển</th>
+              <th>Số Hồ Sơ Đã Chuyển</th>
+              <th>Chuyển Tiếp</th>
+              <th>Trả Về / Failed</th>
+              <th>Thời Gian Giữ Ở Bước (TB)</th>
+              <th>Lần Chuyển Gần Nhất</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
   </div>

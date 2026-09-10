@@ -31,6 +31,7 @@ let tableQuery = '';
 let sortCol = -1;
 let sortAsc = true;
 let stageMap = {};
+let META = {};                 // meta của payload (nguồn, thời điểm cập nhật) — dùng khi xuất Excel
 let liveLoading = false;
 let autoTimer = null;
 let _liveRetryTimer = null;
@@ -59,6 +60,7 @@ function updateConn(ok, msg){
 
 function fmtMeta(d){
   const m = d.meta || {};
+  META = m;
   let s = 'Cập nhật: ' + (m.updated || '') + ' · ' + fmt(d.rows.length) + ' hồ sơ';
   if(m.total_reported) s += ' / ' + fmt(m.total_reported);
   s += ' · Nguồn: ' + (m.source || 'Base Workflow');
@@ -78,6 +80,8 @@ $$('.tab-btn').forEach(btn => {
       renderMonthlyKPI(filteredRows());
     } else if(btn.dataset.tab === 'tab-team'){
       renderDeep(filteredRows());
+    } else if(btn.dataset.tab === 'tab-audit'){
+      renderAudit(filteredRows());
     }
   };
 });
@@ -89,7 +93,10 @@ function applyData(hdrs, rws, stgMap){
   stageMap = stgMap || {};
   enrichTeam();
   detectFilterCols();
+  buildMoveLog();                // dựng nhật ký chuyển bước cho tab 7
   filters = {};
+  auditF = { from: '', to: '', stFrom: '', stTo: '', by: '', recv: '', dir: '', q: '' };
+  auditPage = 1;
   page = 1;
   tableQuery = '';
   sortCol = -1;
@@ -347,6 +354,7 @@ function render(){
   try { renderLegalReport(data); } catch(e){ console.error('renderLegalReport error:', e); }
   try { renderMonthlyKPI(data); } catch(e){ console.error('renderMonthlyKPI error:', e); }
   try { renderTable(data); } catch(e){ console.error('renderTable error:', e); }
+  try { renderAudit(data); } catch(e){ console.error('renderAudit error:', e); }
 }
 
 /* ── Render Modules ── */
@@ -1086,6 +1094,608 @@ function renderMonthlyKPI(data){
   }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ⭐ TAB 7 — NHẬT KÝ CHUYỂN BƯỚC (MOVE AUDIT TRAIL)
+   ═══════════════════════════════════════════════════════════
+   Trả lời đúng 1 câu hỏi: "Hồ sơ này AI chuyển, chuyển LÚC NÀO?"
+
+   NGUỒN DỮ LIỆU: cột "Lịch sử chuyển bước" (JSON) của Base Workflow.
+   Mỗi phần tử trong JSON là MỘT BƯỚC hồ sơ đã đi qua:
+       u  = cán bộ phụ trách bước đó      s  = mã giai đoạn
+       st = lúc vào bước (unix)           et = lúc rời bước (0 = đang ở đây)
+
+   QUY ƯỚC DỰNG 1 LƯỢT CHUYỂN (đọc kỹ trước khi sửa):
+     Ghép 2 bước liền nhau i và i+1 thành 1 sự kiện chuyển:
+       • Thời điểm chuyển = et[i]  (lúc hồ sơ rời bước cũ; thiếu thì lấy st[i+1])
+       • NGƯỜI CHUYỂN     = u[i]   — cán bộ phụ trách bước VỪA HOÀN TẤT,
+                                     tức người bấm chuyển hồ sơ đi
+       • NGƯỜI NHẬN       = u[i+1] — cán bộ phụ trách bước kế tiếp
+       • Thời gian giữ    = et[i] - st[i] — thời gian THỰC ở bước cũ.
+                            KHÔNG dùng khoá `d` vì `d` là hạn SLA cấu hình
+                            sẵn của giai đoạn, không phải thời gian thực.
+     ⇒ Bước cuối cùng (đang xử lý) KHÔNG sinh sự kiện vì chưa chuyển đi đâu.
+
+   ⚠ KHÁC VỚI TAB 2: Tab 2 đếm "lượt chuyển bước" theo `st` và gán cho
+     NGƯỜI NHẬN bước đó. Tab 7 gán cho NGƯỜI CHUYỂN ĐI. Vì vậy con số hai
+     tab lệch nhau là ĐÚNG THEO THIẾT KẾ, không phải lỗi.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Hướng chuyển — suy từ số thứ tự trong tên giai đoạn ("3. Số Hóa…" → 3) */
+const AUDIT_DIRS = {
+  fwd:    { label: '⏩ Chuyển tiếp',           cls: 'b-active'  },
+  back:   { label: '↩️ Trả về bước trước',     cls: 'b-warning' },
+  same:   { label: '🔁 Chuyển lại cùng bước',  cls: 'b-ontime'  },
+  fail:   { label: '⛔ Chuyển sang Failed',    cls: 'b-overdue' },
+  reopen: { label: '🔓 Mở lại từ Failed',      cls: 'b-done'    }
+};
+
+const AUDIT_UNKNOWN = '(Không rõ cán bộ)';
+
+let moveLog = [];                 // toàn bộ lượt chuyển, mới nhất trước
+let auditF = { from: '', to: '', stFrom: '', stTo: '', by: '', recv: '', dir: '', q: '' };
+let auditPage = 1;
+let auditPer = 50;                // 0 = xem tất cả
+let auditSort = 't';
+let auditAsc = false;
+let _auditCharts = [];
+let _auditBound = false;
+
+/* ── Tiện ích ── */
+function stageNameOf(id){
+  const k = String(id || '');
+  return stageMap[k] || (k ? 'Bước ' + k : EMPTY);
+}
+
+function stageNumOf(name){
+  const m = /^\s*(\d+)/.exec(String(name || ''));
+  return m ? parseInt(m[1], 10) : NaN;
+}
+
+function moveDirOf(fromName, toName){
+  if(toName === 'Failed') return 'fail';
+  if(fromName === 'Failed') return 'reopen';
+  const a = stageNumOf(fromName), b = stageNumOf(toName);
+  if(isNaN(a) || isNaN(b)) return 'fwd';
+  if(b > a) return 'fwd';
+  if(b < a) return 'back';
+  return 'same';
+}
+
+function fmtTs(t){
+  const d = new Date(t * 1000), p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() +
+         ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function fmtDayKey(t){
+  const d = new Date(t * 1000), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+function fmtDur(sec){
+  if(!sec || sec <= 0) return '—';
+  if(sec < 60) return sec + ' giây';
+  if(sec < 3600) return Math.round(sec / 60) + ' phút';
+  if(sec < 86400) return (sec / 3600).toFixed(1) + ' giờ';
+  return (sec / 86400).toFixed(1) + ' ngày';
+}
+
+/* 'yyyy-mm-dd' → mốc unix đầu ngày; isEnd = true thì lấy đầu ngày HÔM SAU
+   để khoảng lọc bao trọn cả ngày "đến" */
+function auditTs(s, isEnd){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  if(!m) return 0;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0);
+  return Math.floor(d.getTime() / 1000) + (isEnd ? 86400 : 0);
+}
+
+function dateInputVal(d){
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+function dmy(isoDate){
+  return String(isoDate || '').split('-').reverse().join('/');
+}
+
+/* Vài lượt chuyển Base KHÔNG trả về username, chỉ có mover_id dạng số
+   (server.py:219 đã fallback sang mover_id). Ghi rõ "ID <số>" để người xem
+   biết đó là mã nội bộ của Base chứ không phải tên đăng nhập bị lỗi. */
+function auditUserLabel(u){
+  return /^\d+$/.test(String(u)) ? 'ID ' + u : String(u);
+}
+
+/* Không tra được tổ cho mã số nội bộ — để trống thay vì gán nhầm Tổ 1 */
+function auditTeamOf(u){
+  return /^\d+$/.test(String(u)) ? EMPTY : RE.teamOf(u);
+}
+
+/* ── Dựng nhật ký từ cột "Lịch sử chuyển bước" (chạy 1 lần mỗi lần nạp dữ liệu) ── */
+function buildMoveLog(){
+  moveLog = [];
+  const mvIdx = headers.findIndex(h => h.toLowerCase().includes('chuyển bước'));
+  if(mvIdx < 0) return;
+
+  const nameIdx = headers.findIndex(h => h.toLowerCase().includes('tên nhiệm vụ'));
+  const jobIdx  = headers.findIndex(h => h.toLowerCase() === 'job id');
+  const teamIdx = headers.indexOf(TEAM_COL);
+  const stgIdx  = headers.findIndex(h => h.toLowerCase() === 'giai đoạn');
+  const slaIdx  = ci('trạng thái sla');
+  const linkIdx = headers.findIndex(h => h.toLowerCase().includes('link base'));
+
+  rows.forEach((r, ri) => {
+    let raw;
+    try {
+      raw = typeof r[mvIdx] === 'string' ? JSON.parse(r[mvIdx] || '[]') : (r[mvIdx] || []);
+    } catch(e){ return; }
+    if(!Array.isArray(raw) || raw.length < 2) return;
+
+    const steps = raw.map(m => ({
+      u:  String(m.u || '').trim(),
+      s:  String(m.s || ''),
+      st: parseInt(m.st, 10) || 0,
+      et: parseInt(m.et, 10) || 0
+    })).sort((a, b) => a.st - b.st);
+
+    for(let i = 0; i < steps.length - 1; i++){
+      const a = steps[i], b = steps[i + 1];
+      const t = a.et > 0 ? a.et : b.st;
+      if(!(t > 0)) continue;
+      const fromName = stageNameOf(a.s), toName = stageNameOf(b.s);
+      moveLog.push({
+        t:    t,
+        by:   a.u || AUDIT_UNKNOWN,
+        recv: b.u || AUDIT_UNKNOWN,
+        from: fromName,
+        to:   toName,
+        dir:  moveDirOf(fromName, toName),
+        held: (a.st > 0 && t > a.st) ? (t - a.st) : 0,
+        ri:   ri,
+        row:  r,
+        job:  jobIdx  >= 0 ? r[jobIdx]  : '',
+        name: nameIdx >= 0 ? r[nameIdx] : '',
+        team: teamIdx >= 0 ? r[teamIdx] : EMPTY,
+        stg:  stgIdx  >= 0 ? r[stgIdx]  : '',
+        sla:  slaIdx  >= 0 ? r[slaIdx]  : '',
+        link: linkIdx >= 0 ? r[linkIdx] : ''
+      });
+    }
+  });
+
+  moveLog.sort((a, b) => b.t - a.t);
+}
+
+/* ── Lọc nhật ký ──────────────────────────────────────────────
+   visSet  : tập hồ sơ còn lại sau BỘ LỌC CHUNG ở đầu trang
+   skipKey : bỏ qua 1 tiêu chí — dùng khi đếm số lựa chọn cho chính
+             dropdown đó (lọc chéo: các ô lọc song song vẫn thấy
+             đúng số lượt còn lại của nhau)                       */
+function auditEvents(visSet, skipKey){
+  const t0 = auditTs(auditF.from, false);
+  const t1 = auditTs(auditF.to, true);
+  const q  = auditF.q.trim() ? auditF.q.trim().split(/\s+/).map(removeAccents) : null;
+
+  return moveLog.filter(e => {
+    if(visSet && !visSet.has(e.row)) return false;
+    if(skipKey !== 'date'){
+      if(t0 && e.t < t0) return false;
+      if(t1 && e.t >= t1) return false;
+    }
+    if(skipKey !== 'stFrom' && auditF.stFrom && e.from !== auditF.stFrom) return false;
+    if(skipKey !== 'stTo'   && auditF.stTo   && e.to   !== auditF.stTo)   return false;
+    if(skipKey !== 'by'     && auditF.by     && e.by   !== auditF.by)     return false;
+    if(skipKey !== 'recv'   && auditF.recv   && e.recv !== auditF.recv)   return false;
+    if(skipKey !== 'dir'    && auditF.dir    && e.dir  !== auditF.dir)    return false;
+    if(q){
+      const hay = removeAccents([e.name, e.job, e.by, e.recv, e.from, e.to, e.team].join(' '));
+      if(!q.every(tk => hay.includes(tk))) return false;
+    }
+    return true;
+  });
+}
+
+/* Đổ lại <option> cho 1 dropdown, kèm số lượt của từng lựa chọn */
+function fillAuditSelect(sel, key, visSet, pick, labelOf){
+  const el = $(sel); if(!el) return;
+  const cnt = new Map();
+  auditEvents(visSet, key).forEach(e => {
+    const v = pick(e);
+    cnt.set(v, (cnt.get(v) || 0) + 1);
+  });
+  const total = [...cnt.values()].reduce((s, n) => s + n, 0);
+  const list = [...cnt.entries()].sort((a, b) =>
+    b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'vi'));
+
+  let html = '<option value="">— Tất cả (' + fmt(total) + ') —</option>' +
+    list.map(([v, n]) => '<option value="' + escH(v) + '">' + escH(labelOf ? labelOf(v) : v) + ' (' + fmt(n) + ')</option>').join('');
+
+  /* Lựa chọn đang chọn nhưng đã hết dữ liệu vẫn phải còn trong danh sách,
+     nếu không trình duyệt tự nhảy về "Tất cả" và người dùng tưởng mất lọc */
+  const cur = auditF[key];
+  if(cur && !list.some(x => String(x[0]) === String(cur))){
+    html += '<option value="' + escH(cur) + '">' + escH(labelOf ? labelOf(cur) : cur) + ' (0)</option>';
+  }
+  el.innerHTML = html;
+  el.value = cur || '';
+}
+
+/* Gắn sự kiện cho các ô lọc — CHỈ 1 LẦN, để không mất con trỏ khi đang gõ */
+function bindAuditControls(){
+  if(_auditBound) return;
+  _auditBound = true;
+
+  const redraw = () => { auditPage = 1; renderAudit(filteredRows()); };
+
+  [['#auditFrom', 'from'], ['#auditTo', 'to'], ['#auditStFrom', 'stFrom'],
+   ['#auditStTo', 'stTo'], ['#auditBy', 'by'], ['#auditRecv', 'recv'],
+   ['#auditDir', 'dir']].forEach(pair => {
+    const el = $(pair[0]);
+    if(el) el.onchange = () => { auditF[pair[1]] = el.value; redraw(); };
+  });
+
+  const q = $('#auditSearch');
+  if(q) q.addEventListener('input', () => { auditF.q = q.value; auditPage = 1; renderAudit(filteredRows()); });
+
+  const per = $('#auditPerSelect');
+  if(per) per.onchange = () => { auditPer = parseInt(per.value, 10) || 0; auditPage = 1; renderAudit(filteredRows()); };
+
+  const prev = $('#auditPrev'); if(prev) prev.onclick = () => { if(auditPage > 1){ auditPage--; renderAudit(filteredRows()); } };
+  const next = $('#auditNext'); if(next) next.onclick = () => { auditPage++; renderAudit(filteredRows()); };
+
+  const reset = $('#btnAuditReset');
+  if(reset) reset.onclick = () => {
+    auditF = { from: '', to: '', stFrom: '', stTo: '', by: '', recv: '', dir: '', q: '' };
+    const s = $('#auditSearch'); if(s) s.value = '';
+    auditPage = 1; renderAudit(filteredRows());
+  };
+
+  /* Nút khoảng nhanh: Hôm nay / 7 ngày / 30 ngày / Tháng này / Tất cả */
+  $$('.audit-quick .btn[data-range]').forEach(b => {
+    b.onclick = () => {
+      const now = new Date(), kind = b.dataset.range;
+      if(kind === 'all'){ auditF.from = ''; auditF.to = ''; }
+      else if(kind === 'today'){ auditF.from = auditF.to = dateInputVal(now); }
+      else if(kind === 'month'){
+        auditF.from = dateInputVal(new Date(now.getFullYear(), now.getMonth(), 1));
+        auditF.to   = dateInputVal(now);
+      } else {
+        const n = parseInt(kind, 10) || 7;
+        auditF.from = dateInputVal(new Date(now.getTime() - (n - 1) * 86400000));
+        auditF.to   = dateInputVal(now);
+      }
+      auditPage = 1; renderAudit(filteredRows());
+    };
+  });
+}
+
+/* Chart riêng của tab 7 — tự huỷ, không dùng chung mảng `charts` của render() */
+function auditMkChart(host, span, title, make){
+  const card = document.createElement('div');
+  card.className = 'ccard ' + span;
+  card.innerHTML = '<h3>' + title + '</h3><div class="cbox medium"><canvas></canvas></div>';
+  host.appendChild(card);
+  try { _auditCharts.push(make(card.querySelector('canvas'))); }
+  catch(e){ console.error('auditMkChart error:', e); }
+}
+
+/* ═══ RENDER TAB 7 ═══ */
+function renderAudit(data){
+  const tbody = $('#auditTable tbody'); if(!tbody) return;
+  bindAuditControls();
+
+  _auditCharts.forEach(c => { try { if(c && c.destroy) c.destroy(); } catch(e){} });
+  _auditCharts = [];
+
+  const visSet = new Set(data);
+
+  /* 1. Đổ lại các ô lọc (đếm chéo: mỗi ô hiện số còn lại theo các ô kia) */
+  const fromEl = $('#auditFrom'); if(fromEl) fromEl.value = auditF.from;
+  const toEl   = $('#auditTo');   if(toEl)   toEl.value   = auditF.to;
+  const qEl    = $('#auditSearch'); if(qEl && qEl.value !== auditF.q) qEl.value = auditF.q;
+  const perEl  = $('#auditPerSelect'); if(perEl) perEl.value = String(auditPer);
+
+  fillAuditSelect('#auditStFrom', 'stFrom', visSet, e => e.from);
+  fillAuditSelect('#auditStTo',   'stTo',   visSet, e => e.to);
+  fillAuditSelect('#auditBy',     'by',     visSet, e => e.by,   auditUserLabel);
+  fillAuditSelect('#auditRecv',   'recv',   visSet, e => e.recv, auditUserLabel);
+  fillAuditSelect('#auditDir',    'dir',    visSet, e => e.dir,
+                  v => (AUDIT_DIRS[v] ? AUDIT_DIRS[v].label : v));
+
+  $$('.audit-quick .btn[data-range]').forEach(b => {
+    b.classList.toggle('on', b.dataset.range === 'all' && !auditF.from && !auditF.to);
+  });
+
+  /* 2. Tập sự kiện cuối cùng */
+  let evs = auditEvents(visSet, null);
+
+  const badge = $('#countMoves'); if(badge) badge.textContent = fmt(evs.length);
+
+  const rangeNote = $('#auditRangeNote');
+  if(rangeNote){
+    if(auditF.from || auditF.to){
+      rangeNote.textContent = 'Khoảng lọc: ' + (auditF.from ? dmy(auditF.from) : 'đầu kỳ') +
+                              ' → ' + (auditF.to ? dmy(auditF.to) : 'nay');
+    } else if(evs.length){
+      rangeNote.textContent = 'Toàn bộ: ' + fmtTs(evs[evs.length - 1].t).slice(0, 10) +
+                              ' → ' + fmtTs(evs[0].t).slice(0, 10);
+    } else {
+      rangeNote.textContent = '';
+    }
+  }
+
+  /* 3. Thẻ chỉ số tổng hợp */
+  const hero = $('#auditHeroStats');
+  if(hero){
+    const movers = new Set(evs.map(e => e.by));
+    const jobs   = new Set(evs.map(e => e.ri));
+    const backs  = evs.filter(e => e.dir === 'back' || e.dir === 'fail').length;
+    const days   = new Set(evs.map(e => fmtDayKey(e.t))).size;
+    hero.innerHTML =
+      '<div class="hero-card"><div class="stripe s-amber"></div><div class="value">' + fmt(evs.length) + '<small> lượt</small></div><div class="label">🔀 Tổng Lượt Chuyển Bước Trong Khoảng Lọc</div></div>' +
+      '<div class="hero-card"><div class="stripe s-emerald"></div><div class="value">' + fmt(movers.size) + '<small> cán bộ</small></div><div class="label">👤 Số Cán Bộ Đã Thực Hiện Chuyển</div></div>' +
+      '<div class="hero-card"><div class="stripe s-blue"></div><div class="value">' + fmt(jobs.size) + '<small> hs</small></div><div class="label">📁 Số Hồ Sơ Được Chuyển Bước</div></div>' +
+      '<div class="hero-card"><div class="stripe s-red"></div><div class="value">' + fmt(backs) + '<small> lượt</small></div><div class="label">↩️ Lượt Trả Về Bước Trước / Failed</div></div>' +
+      '<div class="hero-card"><div class="stripe s-violet"></div><div class="value">' + (days ? (evs.length / days).toFixed(1) : '0') + '<small> lượt/ngày</small></div><div class="label">📅 Nhịp Độ TB (' + fmt(days) + ' ngày có phát sinh)</div></div>';
+  }
+
+  /* 4. Biểu đồ: khối lượng theo ngày + top cán bộ chuyển */
+  const grid = $('#auditChartGrid');
+  if(grid){
+    grid.innerHTML = '';
+
+    const byDay = new Map();
+    evs.forEach(e => { const k = fmtDayKey(e.t); byDay.set(k, (byDay.get(k) || 0) + 1); });
+    const dayKeys = [...byDay.keys()].sort();
+
+    auditMkChart(grid, 'col-8', '📅 Số Lượt Chuyển Bước Theo Ngày', ctx => new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: dayKeys.map(k => k.slice(8) + '/' + k.slice(5, 7)),
+        datasets: [{ label: 'Lượt chuyển bước', data: dayKeys.map(k => byDay.get(k)), backgroundColor: '#6798ff', borderRadius: 3 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, datalabels: { display: dayKeys.length <= 20 } },
+        scales: { y: { beginAtZero: true }, x: { ticks: { maxRotation: 90, autoSkip: true, maxTicksLimit: 31 } } }
+      }
+    }));
+
+    const byUser = new Map();
+    evs.forEach(e => byUser.set(e.by, (byUser.get(e.by) || 0) + 1));
+    const top = [...byUser.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+    auditMkChart(grid, 'col-4', '🏆 Top 10 Cán Bộ Chuyển Bước Nhiều Nhất', ctx => new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: top.map(x => short(auditUserLabel(x[0]), 18)),
+        datasets: [{ label: 'Lượt chuyển', data: top.map(x => x[1]), backgroundColor: '#10b981', borderRadius: 3 }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true } }
+      }
+    }));
+  }
+
+  /* 5. Bảng nhật ký chi tiết — sắp xếp + phân trang */
+  const SORTS = {
+    t:    e => e.t,
+    by:   e => removeAccents(e.by),
+    from: e => stageNumOf(e.from) || 99,
+    to:   e => stageNumOf(e.to) || 99,
+    recv: e => removeAccents(e.recv),
+    held: e => e.held,
+    name: e => removeAccents(e.name),
+    team: e => removeAccents(e.team)
+  };
+  const keyFn = SORTS[auditSort] || SORTS.t;
+  evs = [...evs].sort((a, b) => {
+    const va = keyFn(a), vb = keyFn(b);
+    let c = (typeof va === 'number' && typeof vb === 'number')
+      ? va - vb
+      : String(va).localeCompare(String(vb), 'vi');
+    if(c === 0) c = a.t - b.t;
+    return auditAsc ? c : -c;
+  });
+
+  const per   = auditPer > 0 ? auditPer : Math.max(1, evs.length);
+  const total = Math.max(1, Math.ceil(evs.length / per));
+  if(auditPage > total) auditPage = total;
+  const slice = evs.slice((auditPage - 1) * per, auditPage * per);
+
+  const rc = $('#auditRowCount');
+  if(rc) rc.textContent = '(' + fmt(evs.length) + ' lượt · ' + fmt(new Set(evs.map(e => e.ri)).size) + ' hồ sơ)';
+
+  const COLS = [
+    { k: 't',    t: 'Thời Điểm Chuyển' },
+    { k: 'by',   t: 'Người Chuyển' },
+    { k: 'from', t: 'Chuyển Từ Bước → Đến Bước' },
+    { k: null,   t: 'Hướng Chuyển' },
+    { k: 'recv', t: 'Người Nhận Bước Sau' },
+    { k: 'held', t: 'Thời Gian Giữ Ở Bước Cũ' },
+    { k: 'name', t: 'Hồ Sơ' },
+    { k: 'team', t: 'Tổ / Phòng' }
+  ];
+
+  const thead = $('#auditTable thead');
+  if(thead){
+    thead.innerHTML = '<tr>' + COLS.map(c => {
+      if(!c.k) return '<th style="cursor:default">' + escH(c.t) + '</th>';
+      const act = auditSort === c.k;
+      return '<th class="' + (act ? 'sorted' : '') + '" data-k="' + c.k + '">' + escH(c.t) +
+             ' <span class="sa">' + (act ? (auditAsc ? '▲' : '▼') : '⇅') + '</span></th>';
+    }).join('') + '</tr>';
+
+    thead.querySelectorAll('th[data-k]').forEach(th => {
+      th.onclick = () => {
+        const k = th.dataset.k;
+        if(auditSort === k) auditAsc = !auditAsc;
+        else { auditSort = k; auditAsc = (k !== 't' && k !== 'held'); }
+        renderAudit(filteredRows());
+      };
+    });
+  }
+
+  if(!slice.length){
+    tbody.innerHTML = '<tr><td colspan="' + COLS.length + '" class="empty-msg">Không có lượt chuyển bước nào khớp bộ lọc đang chọn.</td></tr>';
+  } else {
+    tbody.innerHTML = slice.map(e => {
+      const d = AUDIT_DIRS[e.dir] || AUDIT_DIRS.fwd;
+      const ts = fmtTs(e.t);
+      return '<tr onclick="window.openDetail(' + e.ri + ')" title="Bấm để xem chi tiết hồ sơ">' +
+        '<td><div class="ts-cell">' + escH(ts.slice(11)) + '<small>' + escH(ts.slice(0, 10)) + '</small></div></td>' +
+        '<td><div class="user-badge"><div class="avatar">' + escH(auditUserLabel(e.by).slice(0, 2).toUpperCase()) + '</div><b>' + escH(auditUserLabel(e.by)) + '</b></div></td>' +
+        '<td><div class="flow"><span class="st-from">' + escH(e.from) + '</span><span class="arrow">→</span><span class="st-to">' + escH(e.to) + '</span></div></td>' +
+        '<td><span class="badge ' + d.cls + '">' + d.label + '</span></td>' +
+        '<td>' + escH(auditUserLabel(e.recv)) + '</td>' +
+        '<td>' + escH(fmtDur(e.held)) + '</td>' +
+        '<td>' + escH(short(e.name, 46)) + '</td>' +
+        '<td><span class="badge b-active">' + escH(e.team) + '</span></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  const pi = $('#auditPageInfo');
+  if(pi) pi.textContent = auditPer > 0
+    ? 'Trang ' + fmt(auditPage) + ' / ' + fmt(total) + ' · ' + fmt(slice.length) + ' / ' + fmt(evs.length) + ' lượt'
+    : 'Hiển thị tất cả ' + fmt(evs.length) + ' lượt';
+
+  /* 6. Bảng tổng hợp trách nhiệm theo cán bộ chuyển bước */
+  const ubody = $('#auditByUserTable tbody');
+  if(ubody){
+    const list = auditByUser(evs);
+    ubody.innerHTML = list.length ? list.map(s =>
+      '<tr>' +
+        '<td><div class="user-badge"><div class="avatar">' + escH(auditUserLabel(s.user).slice(0, 2).toUpperCase()) + '</div><b>' + escH(auditUserLabel(s.user)) + '</b></div></td>' +
+        '<td><span class="badge b-active">' + escH(auditTeamOf(s.user)) + '</span></td>' +
+        '<td><b style="color:var(--color-blue-cornflower)">' + fmt(s.n) + '</b> lượt</td>' +
+        '<td><b>' + fmt(s.jobs.size) + '</b> hs</td>' +
+        '<td>' + fmt(s.fwd) + '</td>' +
+        '<td>' + (s.back ? '<span class="badge b-warning">' + fmt(s.back) + '</span>' : '0') + '</td>' +
+        '<td>' + escH(s.heldN ? fmtDur(Math.round(s.held / s.heldN)) : '—') + '</td>' +
+        '<td><span style="font-family:var(--font-mono);font-size:12.5px">' + escH(fmtTs(s.last)) + '</span></td>' +
+      '</tr>').join('')
+    : '<tr><td colspan="8" class="empty-msg">Chưa có lượt chuyển bước nào trong khoảng lọc.</td></tr>';
+  }
+
+  /* 7. Nút xuất Excel — gắn lại mỗi lần render để luôn xuất ĐÚNG tập đang xem */
+  const btnX = $('#btnAuditExport');
+  if(btnX) btnX.onclick = () => exportAuditExcel(evs);
+}
+
+/* Gom nhật ký theo NGƯỜI CHUYỂN — dùng chung cho bảng web và sheet Excel */
+function auditByUser(evs){
+  const stat = new Map();
+  evs.forEach(e => {
+    if(!stat.has(e.by)){
+      stat.set(e.by, { user: e.by, n: 0, fwd: 0, back: 0, jobs: new Set(), held: 0, heldN: 0, last: 0 });
+    }
+    const s = stat.get(e.by);
+    s.n++;
+    if(e.dir === 'back' || e.dir === 'fail') s.back++; else s.fwd++;
+    s.jobs.add(e.ri);
+    if(e.held > 0){ s.held += e.held; s.heldN++; }
+    if(e.t > s.last) s.last = e.t;
+  });
+  return [...stat.values()].sort((a, b) => b.n - a.n || b.jobs.size - a.jobs.size);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   XUẤT EXCEL NHẬT KÝ — 3 sheet, theo quy ước mục 8 (report-engine.js)
+     • NhatKyChuyenBuoc  — từng lượt chuyển (dòng 1 là tiêu đề cột)
+     • TongHopNguoiChuyen — gom theo cán bộ chuyển bước
+     • ThongTin           — đơn vị, thời điểm, TOÀN BỘ bộ lọc đang bật
+   Thêm/bớt cột: sửa AUDIT_EXPORT_COLUMNS bên dưới, không đụng bộ dựng.
+   ═══════════════════════════════════════════════════════════ */
+const AUDIT_EXPORT_COLUMNS = [
+  { title: 'STT',                     type: 'int',      wch: 6,  get: (e, i) => i + 1 },
+  { title: 'Thời điểm chuyển',        type: 'datetime', wch: 18, get: e => fmtTs(e.t) },
+  { title: 'Ngày chuyển',             type: 'date',     wch: 13, get: e => fmtTs(e.t).slice(0, 10) },
+  { title: 'Giờ chuyển',              type: 'text',     wch: 9,  get: e => fmtTs(e.t).slice(11) },
+  { title: 'Người chuyển',            type: 'text',     wch: 15, get: e => auditUserLabel(e.by) },
+  { title: 'Tổ của người chuyển',     type: 'text',     wch: 14, get: e => auditTeamOf(e.by) },
+  { title: 'Chuyển đi từ bước',       type: 'text',     wch: 34, get: e => e.from },
+  { title: 'Chuyển đến bước',         type: 'text',     wch: 34, get: e => e.to },
+  { title: 'Hướng chuyển',            type: 'text',     wch: 22, get: e => auditDirText(e.dir) },
+  { title: 'Người nhận bước sau',     type: 'text',     wch: 15, get: e => auditUserLabel(e.recv) },
+  { title: 'Thời gian giữ ở bước cũ', type: 'text',     wch: 18, get: e => fmtDur(e.held) },
+  /* Phải trả về SỐ THẬT, không phải chuỗi: RE.xlNum đọc "0.970" theo kiểu
+     nghìn của VN thành 970. Xem mục 8 của js/report-engine.js. */
+  { title: 'Số ngày giữ ở bước cũ',   type: 'num',      wch: 15, get: e => e.held ? Math.round(e.held / 86400 * 1000) / 1000 : '' },
+  { title: 'Job ID',                  type: 'text',     wch: 11, get: e => e.job },
+  { title: 'Tên hồ sơ',               type: 'text',     wch: 42, get: e => e.name },
+  { title: 'Tổ nghiệp vụ của hồ sơ',  type: 'text',     wch: 14, get: e => e.team },
+  { title: 'Giai đoạn hiện tại',      type: 'text',     wch: 30, get: e => e.stg },
+  { title: 'Trạng thái SLA',          type: 'text',     wch: 15, get: e => e.sla },
+  { title: 'Link Base Workflow',      type: 'text',     wch: 38, get: e => e.link }
+];
+
+/* Nhãn hướng chuyển bỏ emoji để ô Excel sạch chữ */
+function auditDirText(dir){
+  const d = AUDIT_DIRS[dir];
+  return d ? d.label.replace(/^\S+\s*/, '') : dir;
+}
+
+function exportAuditExcel(evs){
+  if(!window.XLSX){ alert('Chưa nạp được thư viện Excel (libs/xlsx.full.min.js).'); return; }
+  if(!evs || !evs.length){ alert('Không có lượt chuyển bước nào để xuất — hãy nới bộ lọc lại.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  /* Sheet 1 — nhật ký chi tiết */
+  const cols = AUDIT_EXPORT_COLUMNS.map(c => ({ title: c.title, type: c.type, wch: c.wch }));
+  const body = evs.map((e, i) => AUDIT_EXPORT_COLUMNS.map(c => c.get(e, i)));
+  XLSX.utils.book_append_sheet(wb, RE.xlSheet(cols, body), 'NhatKyChuyenBuoc');
+
+  /* Sheet 2 — tổng hợp theo cán bộ chuyển bước */
+  const uCols = [
+    { title: 'STT',                     type: 'int',      wch: 6 },
+    { title: 'Cán bộ chuyển bước',      type: 'text',     wch: 18 },
+    { title: 'Tổ / Phòng',              type: 'text',     wch: 14 },
+    { title: 'Số lượt chuyển',          type: 'int',      wch: 14 },
+    { title: 'Số hồ sơ đã chuyển',      type: 'int',      wch: 16 },
+    { title: 'Lượt chuyển tiếp',        type: 'int',      wch: 15 },
+    { title: 'Lượt trả về / Failed',    type: 'int',      wch: 18 },
+    { title: 'Số ngày giữ ở bước (TB)', type: 'num',      wch: 20 },
+    { title: 'Lần chuyển gần nhất',     type: 'datetime', wch: 18 }
+  ];
+  const users = auditByUser(evs);
+  const uBody = users.map((s, i) => [
+    i + 1, auditUserLabel(s.user), auditTeamOf(s.user), s.n, s.jobs.size, s.fwd, s.back,
+    s.heldN ? Math.round(s.held / s.heldN / 86400 * 100) / 100 : '', fmtTs(s.last)
+  ]);
+  XLSX.utils.book_append_sheet(wb, RE.xlSheet(uCols, uBody), 'TongHopNguoiChuyen');
+
+  /* Sheet 3 — ThongTin: mô tả báo cáo + toàn bộ bộ lọc đang bật */
+  const gInfo = Object.entries(filters)
+    .filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+    .map(([k, v]) => ['Lọc chung theo cột: ' + (headers[+k] || k), v]);
+
+  XLSX.utils.book_append_sheet(wb, RE.xlInfoSheet([
+    ['Đơn vị',                 'Ban Quản lý dự án đầu tư xây dựng phường Bình Quới'],
+    ['Dự án',                  'Khu đô thị mới Bình Quới – Thanh Đa'],
+    ['Nội dung file',          'Nhật ký chuyển bước hồ sơ bồi thường — truy vết ai chuyển, chuyển lúc nào'],
+    ['Cách xác định người chuyển', 'Cán bộ phụ trách bước vừa hoàn tất (người bấm chuyển hồ sơ sang bước sau)'],
+    ['Thời điểm xuất file',    RE.xlNow()],
+    ['Nguồn dữ liệu',          META.source || 'Base Workflow'],
+    ['Base cập nhật lúc',      META.updated || ''],
+    ['Số lượt trong file',     evs.length],
+    ['Số hồ sơ liên quan',     new Set(evs.map(e => e.ri)).size],
+    ['Số cán bộ chuyển bước',  users.length],
+    ['Lọc từ ngày',            auditF.from ? dmy(auditF.from) : '(không giới hạn)'],
+    ['Lọc đến ngày',           auditF.to   ? dmy(auditF.to)   : '(không giới hạn)'],
+    ['Lọc chuyển đi từ bước',  auditF.stFrom || '(tất cả)'],
+    ['Lọc chuyển đến bước',    auditF.stTo   || '(tất cả)'],
+    ['Lọc người chuyển',       auditF.by     || '(tất cả)'],
+    ['Lọc người nhận',         auditF.recv   || '(tất cả)'],
+    ['Lọc hướng chuyển',       auditF.dir ? auditDirText(auditF.dir) : '(tất cả)'],
+    ['Từ khoá tìm kiếm',       auditF.q.trim() || '(không)']
+  ].concat(gInfo.length ? gInfo : [['Bộ lọc chung đầu trang', 'Không lọc — toàn bộ hồ sơ']])), 'ThongTin');
+
+  RE.xlSave(wb, 'NhatKyChuyenBuoc_BinhQuoiThanhDa');
+}
+
 function removeAccents(str){
   return String(str || '')
     .normalize('NFD')
@@ -1319,20 +1929,146 @@ if(btnP){
     setTimeout(() => { document.title = oldTitle; }, 500);
   });
 }
+/* ═══════════════════════════════════════════════════════════
+   ⭐ XUẤT EXCEL DASHBOARD — CẤU HÌNH CỘT NGAY Ở ĐÂY
+   ═══════════════════════════════════════════════════════════
+   File xuất ra gồm 2 sheet:
+     • "DuLieuKPI" — bảng dữ liệu SẠCH: dòng 1 là tiêu đề cột, dữ liệu
+       từ dòng 2, không gộp ô, không chèn dòng tiêu đề báo cáo phía trên
+       ⇒ mở lên là lọc / sắp xếp / PivotTable được ngay.
+     • "ThongTin" — đơn vị, dự án, thời điểm xuất, nguồn dữ liệu và
+       BỘ LỌC đang bật. Mọi thứ mô tả báo cáo dồn hết vào sheet này.
+
+   Mỗi dòng dưới đây = 1 CỘT trong file Excel:
+     match : từ khoá dò tên cột của Base (khớp đúng hệt trước, rồi mới
+             khớp chứa từ khoá) — Base đổi thứ tự cột vẫn chạy đúng
+     title : tiêu đề in ra Excel (bỏ trống = giữ nguyên tên của Base)
+     type  : kiểu ô — quyết định file có "sạch" hay không
+             (bỏ trống) = chữ
+             'int'      = số nguyên       → SUM / lọc số được
+             'num'      = số thập phân
+             'pct'      = phần trăm thật  (92% lưu là 0,92)
+             'date'     = ngày            → sắp xếp theo ngày được
+             'datetime' = ngày + giờ
+             ⚠ Ô nào không đúng kiểu (vd số thửa "MP15") thì tự giữ
+               nguyên chữ, không bị đọc sai thành số.
+     wch   : độ rộng cột (số ký tự); bỏ trống = tự canh theo nội dung
+
+   Cột nào Base có mà chưa khai ở đây sẽ tự được NỐI VÀO CUỐI dạng chữ
+   ⇒ Base thêm trường mới cũng không mất dữ liệu.
+   ═══════════════════════════════════════════════════════════ */
+const EXPORT_SKIP = ['chuyển bước'];        // cột không xuất (JSON lịch sử, rất dài)
+
+const EXPORT_COLUMNS = [
+  { match: 'job id',             title: 'Job ID',                            wch: 11 },
+  { match: 'tên nhiệm vụ',       title: 'Tên hồ sơ',                         wch: 42 },
+  { match: 'tổ/phòng',           title: 'Tổ nghiệp vụ',                      wch: 14 },
+  { match: 'phụ trách',          title: 'Cán bộ phụ trách',                  wch: 15 },
+  { match: 'người tạo',          title: 'Người tạo',                         wch: 14 },
+  { match: 'giai đoạn',          title: 'Giai đoạn',                         wch: 26 },
+  { match: 'trạng thái',         title: 'Trạng thái công việc',              wch: 15 },
+  { match: 'trạng thái sla',     title: 'Trạng thái SLA',                    wch: 15 },
+  { match: 'deadline',           title: 'Deadline giai đoạn', type: 'datetime', wch: 18 },
+  { match: 'bắt đầu giai đoạn',  title: 'Bắt đầu giai đoạn',  type: 'datetime', wch: 18 },
+  { match: 'ngày tạo',           title: 'Ngày tạo hồ sơ',     type: 'datetime', wch: 18 },
+  { match: 'cập nhật lần cuối',  title: 'Cập nhật lần cuối',  type: 'datetime', wch: 18 },
+  { match: '% checklist',        title: '% Checklist',        type: 'pct',      wch: 12 },
+  { match: 'số gđ đã qua',       title: 'Số giai đoạn đã qua', type: 'int',     wch: 12 },
+  { match: 'hiện trạng',         title: 'Hiện trạng đất',                    wch: 26 },
+  { match: 'gcn',                title: 'GCN',                               wch: 18 },
+  { match: 'tặng',               title: 'Pháp lý tặng, cho, chuyển nhượng',  wch: 36 },
+  { match: 'tách thửa',          title: 'Tách thửa',                         wch: 18 },
+  { match: 'loại đất',           title: 'Loại đất',                          wch: 20 },
+  { match: 'loại hồ sơ',         title: 'Loại hồ sơ',                        wch: 18 },
+  { match: 'số nhà',             title: 'Số nhà',                            wch: 16 },
+  { match: 'tên đường',          title: 'Tên đường',                         wch: 20 },
+  { match: 'khu phố',            title: 'Khu phố',                           wch: 12 },
+  { match: 'phường',             title: 'Phường',                            wch: 14 },
+  { match: 'số tờ',              title: 'Số tờ',              type: 'int',     wch: 8 },
+  { match: 'số thửa',            title: 'Số thửa',            type: 'int',     wch: 9 },
+  { match: 'một phần',           title: 'Một phần (m2)',      type: 'num',     wch: 13 },
+  { match: 'toàn phần',          title: 'Toàn phần (m2)',     type: 'num',     wch: 13 },
+  { match: 'thông báo thu hồi',  title: 'Thông báo thu hồi đất',             wch: 20 },
+  { match: 'ngày kiểm',          title: 'Ngày kiểm đếm',      type: 'date',    wch: 14 },
+  { match: 'vướng mắc',          title: 'Nhóm vướng mắc, khó khăn',          wch: 30 },
+  { match: 'nhóm vấn đề',        title: 'Nhóm vấn đề cần giải quyết',        wch: 30 },
+  { match: 'nhãn',               title: 'Nhãn',                              wch: 16 },
+  { match: 'người theo dõi',     title: 'Người theo dõi',                    wch: 24 },
+  { match: 'link base',          title: 'Link Base Workflow',                wch: 38 }
+];
+
+/* Dò cột theo tên: khớp ĐÚNG HỆT trước, không có mới khớp chứa từ khoá.
+   Mỗi cột của Base chỉ dùng 1 lần để không sinh 2 cột trùng dữ liệu. */
+function matchHeader(key, used){
+  const k = String(key).toLowerCase();
+  let i = headers.findIndex((h, idx) => !used.has(idx) && h.toLowerCase() === k);
+  if(i < 0) i = headers.findIndex((h, idx) => !used.has(idx) && h.toLowerCase().includes(k));
+  return i;
+}
+
+/* Danh sách cột thực tế của file = STT + cột khai ở trên + cột Base còn lại */
+function buildExportPlan(){
+  const used = new Set();
+  const plan = [{ title: 'STT', type: 'int', wch: 6, idx: -1 }];
+
+  EXPORT_COLUMNS.forEach(c => {
+    const i = matchHeader(c.match, used);
+    if(i < 0) return;                       // Base không có cột này → bỏ qua
+    used.add(i);
+    plan.push({ title: c.title || headers[i], type: c.type || 'text', wch: c.wch, idx: i });
+  });
+
+  headers.forEach((h, i) => {
+    if(used.has(i)) return;
+    if(EXPORT_SKIP.some(k => h.toLowerCase().includes(k))) return;
+    plan.push({ title: h, type: 'text', idx: i });
+  });
+  return plan;
+}
+
 const btnE = $('#btnExport');
 if(btnE){
   btnE.onclick = () => {
+    if(!window.XLSX){ alert('Chưa nạp được thư viện Excel (libs/xlsx.full.min.js).'); return; }
     if(!rows.length) return;
-    const data = filteredRows();
-    const sheetData = data.map(r => {
-      const obj = {};
-      headers.forEach((h, i) => { if(!h.includes('chuyển bước')) obj[h] = r[i] || ''; });
-      return obj;
-    });
-    const ws = XLSX.utils.json_to_sheet(sheetData);
+
+    /* Xuất ĐÚNG tập hồ sơ đang thấy trên bảng: bộ lọc + ô tìm kiếm */
+    let data = filteredRows();
+    const q = tableQuery.trim();
+    if(q){
+      const tokens = q.split(/\s+/).map(t => removeAccents(t));
+      data = data.filter(r => {
+        const hay = removeAccents(r.join(' '));
+        return tokens.every(t => hay.includes(t));
+      });
+    }
+
+    const plan = buildExportPlan();
+    const cols = plan.map(c => ({ title: c.title, type: c.type, wch: c.wch }));
+    const body = data.map((r, i) => plan.map(c => (c.idx < 0 ? i + 1 : r[c.idx])));
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'DuLieuKPI');
-    XLSX.writeFile(wb, 'BaoCao_KPI_BinhQuoiThanhDa_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    XLSX.utils.book_append_sheet(wb, RE.xlSheet(cols, body), 'DuLieuKPI');
+
+    /* Bộ lọc đang bật ghi vào sheet ThongTin, không chèn lên đầu bảng dữ liệu */
+    const fInfo = Object.entries(filters)
+      .filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '')
+      .map(([k, v]) => ['Lọc theo cột: ' + (headers[+k] || k), v]);
+
+    XLSX.utils.book_append_sheet(wb, RE.xlInfoSheet([
+      ['Đơn vị',                'Ban Quản lý dự án đầu tư xây dựng phường Bình Quới'],
+      ['Dự án',                 'Khu đô thị mới Bình Quới – Thanh Đa'],
+      ['Nội dung file',         'Dữ liệu KPI hồ sơ bồi thường theo bộ lọc đang xem'],
+      ['Thời điểm xuất file',   RE.xlNow()],
+      ['Nguồn dữ liệu',         META.source || 'Base Workflow'],
+      ['Base cập nhật lúc',     META.updated || ''],
+      ['Tổng hồ sơ toàn dự án', rows.length],
+      ['Số hồ sơ trong file',   body.length],
+      ['Số cột trong file',     cols.length],
+      ['Từ khoá tìm kiếm',      q || '(không)']
+    ].concat(fInfo.length ? fInfo : [['Bộ lọc đang áp dụng', 'Không lọc — toàn bộ hồ sơ']])), 'ThongTin');
+
+    RE.xlSave(wb, 'BaoCaoKPI_BinhQuoiThanhDa');
   };
 }
 function initRealtimeStream(){

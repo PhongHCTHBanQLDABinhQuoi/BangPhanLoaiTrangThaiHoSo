@@ -18,5 +18,5 @@ Mở `http://localhost:8080` (hoặc double-click `start.bat`). Chỉ đồng b�
 
 | Trang | Nội dung |
 |---|---|
-| `/` | Dashboard KPI 6 tab (tổng quan, KPI cán bộ theo tháng, pháp lý, tổ, trễ hạn, danh sách) |
+| `/` | Dashboard KPI 7 tab (tổng quan, KPI cán bộ theo tháng, pháp lý, tổ, trễ hạn, danh sách, **nhật ký chuyển bước**) |
 | `/bangbaocao` | Bảng web tra cứu phân loại pháp lý: bấm danh mục để liệt kê hồ sơ, tìm kiếm không cần gõ dấu, in A4 ngang |
