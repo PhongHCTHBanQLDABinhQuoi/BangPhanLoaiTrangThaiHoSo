@@ -22,7 +22,22 @@ jobs:
         with:
           python-version: '3.10'
 
+      # Token KHÔNG nằm trong mã nguồn (repo này công khai). Phải khai báo
+      # Secret tên BASE_ACCESS_TOKEN tại:
+      #   Settings > Secrets and variables > Actions > New repository secret
+      - name: Kiểm tra Secret BASE_ACCESS_TOKEN
+        env:
+          BASE_ACCESS_TOKEN: ${{ secrets.BASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$BASE_ACCESS_TOKEN" ]; then
+            echo "::error::Thiếu Secret BASE_ACCESS_TOKEN. Vào Settings > Secrets and variables > Actions > New repository secret, đặt tên BASE_ACCESS_TOKEN và dán token Base vào."
+            exit 1
+          fi
+          echo "Đã có Secret BASE_ACCESS_TOKEN."
+
       - name: Đồng bộ dữ liệu từ Base Workflow API
+        env:
+          BASE_ACCESS_TOKEN: ${{ secrets.BASE_ACCESS_TOKEN }}
         run: python server.py --sync
 
       - name: Cam kết & Cập nhật đĩa cache mới lên GitHub
