@@ -47,6 +47,7 @@ Dự án có **2 chế độ chạy song song**, dùng chung 1 frontend:
 ### Chế độ A — Máy chủ nội bộ (LAN)
 `start.bat` → `python server.py` → mở `http://localhost:8080` và `http://<LAN-IP>:8080`.
 - Nạp `cache_payload.json` vào RAM **trước khi** mở port ⇒ phản hồi < 1ms.
+- **Đồng bộ ngay khi khởi động**: mở port trước (dashboard hiện số cũ tức thì), rồi một luồng nền gọi API luôn; xong thì đẩy xuống trình duyệt qua SSE. Trước đây phải chờ đủ 30 phút hoặc bấm tay ⇒ mở máy ra hay thấy số của hôm trước.
 - Nền: tự refresh API mỗi **1800s** (`CACHE_SECONDS`).
 - `POST /api/webhook` → Base gọi vào để đồng bộ realtime.
 - `GET /api/stream` (SSE) → server đẩy tín hiệu, frontend tự `loadLive()`.
@@ -74,7 +75,8 @@ Frontend `fetch('/api/data')` thất bại → **tự fallback** sang `fetch('ca
 | `css/report-table.css` | ~180 | Chỉ phần RIÊNG của trang tra cứu (dòng bấm được, tag danh mục, sticky header). Nền tảng dùng chung `dovetail.css`. |
 | `css/dovetail.css` | ~1.605 | Design system Dovetail (dark) + layout wallboard + **print engine A4 landscape** + responsive 1024×768. Dùng cho **cả 2 trang**. |
 | `.claude/launch.json` | — | Cấu hình để Claude Code / IDE tự khởi động server (`python server.py`, port 8080). |
-| `cache_payload.json` | — | Snapshot dữ liệu (~2,9 MB, 2.225 hồ sơ). Do Actions tự cập nhật. |
+| `cache_payload.json` | — | Snapshot dữ liệu (~2,9 MB, ~2.240 hồ sơ). Do Actions tự cập nhật. |
+| **`base_token.txt`** | — | **Token Base — nằm trong `.gitignore`, KHÔNG có trên GitHub.** Dòng đầu là token, dòng bắt đầu bằng `#` là ghi chú. Máy mới clone repo về phải tự tạo file này, nếu không sẽ không đồng bộ được. |
 | `DESIGN.md` | — | Spec design system Dovetail gốc (token màu, typography, do/don't). Tham chiếu khi thêm UI mới. |
 | `HUONG-DAN.txt` | — | Hướng dẫn cho **người dùng cuối** (không phải dev): cách bấm start.bat, mở firewall, đổi port. |
 | `libs/` | — | Chart.js 4.4.1 + chartjs-plugin-datalabels 2.2.0 + SheetJS 0.18.5, **đóng gói offline**, có fallback CDN trong `<head>`. |
@@ -422,12 +424,26 @@ git pull --rebase
 - `git pull --rebase` → **luôn pull trước khi làm việc**, vì Actions commit mỗi 30 phút.
 - Chạy tay Actions: tab **Actions** trên GitHub → *Tự động đồng bộ dữ liệu Base Workflow* → **Run workflow**.
 
+### Token truy cập Base — 2 nơi, không nơi nào nằm trong mã nguồn
+
+| Chạy ở đâu | Token lấy từ đâu |
+|---|---|
+| Máy nội bộ (`start.bat`, `python server.py`) | file **`base_token.txt`** cạnh `server.py` (đã `.gitignore`) |
+| GitHub Actions | **Secret `BASE_ACCESS_TOKEN`** — *Settings > Secrets and variables > Actions* |
+
+Thứ tự ưu tiên trong `load_access_token()`: biến môi trường `BASE_ACCESS_TOKEN` → `base_token.txt` → rỗng.
+Không có token thì `_post_base()` **ném lỗi kèm hướng dẫn**, `--sync` thoát mã 1 và **không ghi đè** `cache_payload.json`.
+
 ---
 
 ## 10. Cạm bẫy & nợ kỹ thuật đã biết
 
-**Bảo mật — cần xử lý:**
-1. 🔴 **`ACCESS_TOKEN_V2` hardcode ở `server.py:37` và đã commit vào repo GitHub.** Nếu repo là public thì token đang bị lộ. Nên chuyển sang GitHub Secret + `os.environ` và **revoke token cũ** trên Base. `HUONG-DAN.txt` mục 7 cũng dặn không gửi `server.py` ra ngoài.
+**Bảo mật:**
+1. ✅ **Đã bỏ hardcode token khỏi `server.py`** (10/09/2026) — nay đọc từ env `BASE_ACCESS_TOKEN` hoặc `base_token.txt`. Xem mục 9.
+   🔴 **NHƯNG token cũ vẫn nằm trong LỊCH SỬ GIT của repo PUBLIC** `PhongHCTHBanQLDABinhQuoi/BangPhanLoaiTrangThaiHoSo` — ai xem commit cũ vẫn lấy được. **Bắt buộc phải REVOKE token cũ trên Base**, đổi code không cứu được. Cân nhắc chuyển repo sang Private.
+
+**Đã sửa (10/09/2026):**
+1b. **Tải thiếu hồ sơ trong im lặng.** `fetch_page_worker` cũ chỉ thử lại **1 lần** rồi `return p_id, []` ⇒ một trang lỗi là **mất trắng 100 hồ sơ** mà `--sync` vẫn báo "SYNC OK" và vẫn ghi đè `cache_payload.json`. Thực tế đã dính: một lần đồng bộ chỉ lấy 2.141/2.241 hồ sơ. Nay: thử lại **3 lần** có giãn cách (0,6s → 1,2s), timeout tăng dần 40/55/70s, còn thiếu trang nào thì **ném lỗi** và **giữ nguyên file cũ**. Thêm `meta.warning` khi `count < total_reported` (frontend tự hiện trên thanh trạng thái).
 
 **Bug/nợ đã xác nhận khi đọc code:**
 2. **Modal timeline luôn hiện chữ "Bước"** thay vì tên giai đoạn — `app.js` đọc `m.sn`, nhưng `server.py:219` **không** ghi khoá `sn` (chỉ có `u,s,st,et,p,d`). Muốn sửa: map `m.s` → `stageMap[m.s]`. Biến `stageMap` đã được nạp nhưng **hiện chưa dùng ở đâu cả**.

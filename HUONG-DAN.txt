@@ -9,13 +9,17 @@ Ban Quan ly du an DTXD phuong Binh Quoi - Thanh Da
      bang theo doi (giong file index.html cua sep).
    - MOI thiet bi (dien thoai, may tinh khac) CUNG MANG WiFi/LAN deu mo
      duoc bang cach vao dia chi web hien tren man hinh.
-   - Du lieu chi cap nhat khi bam "Lam moi ngay" (hoac tai lai trang web).
+   - Vua bat may chu la no TU DONG BO ngay voi Base (mat khoang 20-60
+     giay), sau do cu 30 phut lam moi mot lan. Muon lay so moi nhat ngay
+     lap tuc thi bam nut "Dong Bo Base Workflow" o goc tren ben phai.
 
 2. CAN GI TRUOC?
    - May chay phai co INTERNET (de goi Base Workflow).
    - Cai Python 3: https://www.python.org/downloads/
        >> Khi cai NHO TICH vao o  "Add Python to PATH"  <<
    - Cac thiet bi xem chi can CUNG WiFi voi may nay (khong can internet).
+   - Trong thu muc PHAI co file  base_token.txt  chua token Base (xem muc 7).
+     Khong co file nay thi may chu van chay nhung KHONG lay duoc du lieu moi.
 
 3. CHAY NHU THE NAO?
    - Bam DUP vao file:  start.bat
@@ -43,8 +47,13 @@ Ban Quan ly du an DTXD phuong Binh Quoi - Thanh Da
      doi thanh 8000 (hoac 5000), luu lai, chay start.bat lai.
 
 7. AN TOAN - LUU Y QUAN TRONG
-   - File server.py co chua TOKEN Base Workflow. KHONG gui file server.py
-     cho nguoi ngoai. Chi chay tren may cua co quan.
+   - TOKEN Base nam trong file rieng:  base_token.txt  (cung thu muc voi
+     server.py). File nay KHONG duoc dua len GitHub va KHONG gui cho ai.
+       + Dong dau tien cua file la token, cac dong bat dau bang # la ghi chu.
+       + Doi token moi: mo file bang Notepad, xoa dong token cu, dan token
+         moi vao, luu lai, chay lai start.bat.
+   - Truoc day token viet thang trong server.py nen bi lo len GitHub. Da
+     chuyen ra file rieng. Token cu can duoc THU HOI tren Base.
    - Dia chi web nay CHI hoat dong trong mang noi bo (LAN). Nguoi ngoai
      mang khong vao duoc, tru khi ban cau hinh them (khong khuyen khich).
    - Token o phia may chu, KHONG lo ra trinh duyet nguoi xem -> an toan hon
@@ -52,13 +61,19 @@ Ban Quan ly du an DTXD phuong Binh Quoi - Thanh Da
 
 8. KHONG THAY DU LIEU?
    - Kiem tra may chu co INTERNET khong (thu mo google.com).
-   - Neu Base doi token, mo server.py sua dong  ACCESS_TOKEN_V2 = "..."
-     bang token moi (lay cung cho voi token trong Google Apps Script).
+   - Neu Base doi token: mo file  base_token.txt  bang Notepad, thay bang
+     token moi (lay cung cho voi token trong Google Apps Script).
+   - Neu cua so den bao "Chua co token truy cap Base Workflow" thi thieu
+     file base_token.txt hoac file do de trong.
+   - Neu bao "Tai thieu ... trang du lieu" thi mang chap chon: cu bam nut
+     "Dong Bo Base Workflow" chay lai. May chu CO Y khong ghi de du lieu cu
+     bang ban tai thieu, nen so lieu tren man hinh van dung, chi la cu hon.
    - Thanh trang thai tren web se ghi ro loi neu goi Base that bai.
 
 9. FILE TRONG THU MUC NAY
    - start.bat      : bam dup de chay may chu.
    - server.py      : ma nguon may chu (goi Base, phuc vu web).
+   - base_token.txt : TOKEN Base - GIU KIN, khong gui ra ngoai.
    - index.html     : giao dien dashboard (cua sep, da dau noi du lieu song).
    - libs/          : thu vien bieu do (may chu tu tai ve lan dau).
    - HUONG-DAN.txt  : file nay.

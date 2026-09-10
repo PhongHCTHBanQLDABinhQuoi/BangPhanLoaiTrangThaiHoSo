@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Token truy cap Base — KHONG duoc day len GitHub
+base_token.txt
+.env

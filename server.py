@@ -34,7 +34,45 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 # ----------------------------------------------------------------------
 # CẤU HÌNH
 # ----------------------------------------------------------------------
-ACCESS_TOKEN_V2 = "11836~YYEkzFCdqh2rl0G2kgDNWFzUlBfzVE2Ynf01bvh0qxm5Ws0q_9o8gaHoKNF_-VNQUE69iQZymyDyEfmzEfr2zgsThCymrAN0d8kEjji4sVe6UWWTJt3eKXgZE5c2w9ojLnuCQPXHWDZPIpVIQe4ORw"
+# ----------------------------------------------------------------------
+# TOKEN TRUY CẬP BASE — TUYỆT ĐỐI KHÔNG VIẾT THẲNG VÀO FILE NÀY
+# ----------------------------------------------------------------------
+# Repo này là repo công khai trên GitHub. Token viết thẳng vào mã nguồn
+# là bị lộ ra Internet. Thứ tự tìm token:
+#   1. Biến môi trường BASE_ACCESS_TOKEN — GitHub Actions dùng cách này
+#      (Settings > Secrets and variables > Actions > New repository secret)
+#   2. File base_token.txt nằm cạnh server.py — máy nội bộ dùng cách này.
+#      File này đã có trong .gitignore nên KHÔNG bị đẩy lên GitHub.
+TOKEN_ENV = "BASE_ACCESS_TOKEN"
+TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base_token.txt")
+
+TOKEN_MISSING_MSG = (
+    "Chưa có token truy cập Base Workflow.\n"
+    "  • Trên máy cơ quan: tạo file base_token.txt nằm cùng thư mục với server.py,\n"
+    "    dán token vào dòng đầu tiên rồi lưu lại.\n"
+    "  • Trên GitHub Actions: thêm Secret tên BASE_ACCESS_TOKEN tại\n"
+    "    Settings > Secrets and variables > Actions > New repository secret."
+)
+
+
+def load_access_token():
+    tok = (os.environ.get(TOKEN_ENV) or "").strip()
+    if tok:
+        return tok
+    try:
+        with open(TOKEN_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print("  [token] Không đọc được %s: %s" % (TOKEN_FILE, e))
+    return ""
+
+
+ACCESS_TOKEN_V2 = load_access_token()
 WORKFLOW_ID = "16526"
 API_URL = "https://workflow.base.vn/extapi/v1/workflow/jobs"
 PAGE_LIMIT = 100
@@ -89,7 +127,9 @@ def save_disk_cache(payload):
         print("  [disk] Lỗi lưu đĩa cache: %s" % e)
 
 
-def _post_base(page):
+def _post_base(page, timeout=30):
+    if not ACCESS_TOKEN_V2:
+        raise RuntimeError(TOKEN_MISSING_MSG)
     data = urllib.parse.urlencode({
         "access_token_v2": ACCESS_TOKEN_V2,
         "id": WORKFLOW_ID,
@@ -100,7 +140,7 @@ def _post_base(page):
         API_URL, data=data, method="POST",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urllib.request.urlopen(req, timeout=25) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -127,8 +167,14 @@ def _fmt_date(unix_str):
         return ""
 
 
+FETCH_RETRIES = 3          # số lần thử lại mỗi trang trước khi coi là hỏng
+
+
 def fetch_all_jobs_parallel():
-    """Tải dữ liệu song song an toàn từ Base API"""
+    """Tải dữ liệu song song an toàn từ Base API.
+
+    Thiếu bất kỳ trang nào cũng NÉM LỖI thay vì trả về dữ liệu thiếu —
+    thà đồng bộ thất bại rõ ràng còn hơn ghi đè cache bằng bản thiếu hồ sơ."""
     first_page = _post_base(0)
     if first_page.get("code") != 1:
         raise RuntimeError("Base API lỗi trang 0: %s" % json.dumps(first_page)[:200])
@@ -145,29 +191,51 @@ def fetch_all_jobs_parallel():
         total_pages = math.ceil(total_items / items_per_page)
         
         def fetch_page_worker(p_id):
-            try:
-                time.sleep((p_id % 4) * 0.08)
-                res = _post_base(p_id)
-                if res.get("code") == 1:
-                    return p_id, res.get("jobs") or []
-            except Exception as e:
-                print("  [parallel] Thử lại trang %d: %s" % (p_id, e))
-                try:
-                    time.sleep(0.5)
-                    res = _post_base(p_id)
-                    if res.get("code") == 1:
-                        return p_id, res.get("jobs") or []
-                except Exception:
-                    pass
-            return p_id, []
+            """Tải 1 trang, thử lại tối đa FETCH_RETRIES lần.
 
+            Trả về (p_id, jobs, err). err khác None nghĩa là trang này HỎNG
+            — người gọi TUYỆT ĐỐI không được coi đó là "trang rỗng", vì mỗi
+            trang là 100 hồ sơ; bỏ qua một trang là mất 100 hồ sơ mà không
+            ai biết (lỗi cũ: chỉ thử lại 1 lần rồi trả về [])."""
+            last_err = None
+            for attempt in range(1, FETCH_RETRIES + 1):
+                try:
+                    if attempt == 1:
+                        time.sleep((p_id % 4) * 0.08)
+                    res = _post_base(p_id, timeout=25 + attempt * 15)
+                    if res.get("code") == 1:
+                        return p_id, res.get("jobs") or [], None
+                    last_err = "Base trả về code=%s" % res.get("code")
+                except Exception as e:
+                    last_err = str(e)
+                if attempt < FETCH_RETRIES:
+                    wait = 0.6 * (2 ** (attempt - 1))
+                    print("  [parallel] Trang %d lỗi (%s) — thử lại lần %d sau %.1fs"
+                          % (p_id, last_err, attempt + 1, wait))
+                    time.sleep(wait)
+            return p_id, [], (last_err or "không rõ nguyên nhân")
+
+        failed_pages = []
         with ThreadPoolExecutor(max_workers=4) as executor:
             future_to_page = {executor.submit(fetch_page_worker, p): p for p in range(1, total_pages)}
             for future in as_completed(future_to_page):
-                p_id, jobs = future.result()
+                p_id, jobs, err = future.result()
+                if err:
+                    failed_pages.append((p_id, err))
+                    continue
                 base_idx = p_id * items_per_page
                 for idx, jb in enumerate(jobs):
                     all_jobs_dict[base_idx + idx] = jb
+
+        if failed_pages:
+            failed_pages.sort()
+            detail = ", ".join("trang %d (%s)" % (p, e) for p, e in failed_pages[:5])
+            if len(failed_pages) > 5:
+                detail += " và %d trang khác" % (len(failed_pages) - 5)
+            raise RuntimeError(
+                "Tải thiếu %d/%d trang dữ liệu sau %d lần thử: %s. "
+                "KHÔNG ghi đè cache_payload.json để tránh mất hồ sơ — hãy chạy lại lệnh đồng bộ."
+                % (len(failed_pages), total_pages - 1, FETCH_RETRIES, detail))
 
     sorted_keys = sorted(all_jobs_dict.keys())
     all_jobs = [all_jobs_dict[k] for k in sorted_keys]
@@ -281,20 +349,25 @@ def build_payload():
     elapsed = time.time() - start_t
     print("  [parallel] Đã nạp thành công %d hồ sơ trong %.2f giây" % (len(rows), elapsed))
 
-    return {
-        "headers": headers,
-        "rows": rows,
-        "meta": {
-            "count": len(rows),
-            "total_reported": total_reported,
-            "active_count": active_count,
-            "done_count": done_count,
-            "overdue_count": overdue_count,
-            "stage_map": stage_map,
-            "updated": datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M:%S"),
-            "source": "Base Workflow (API Song Song)",
-        },
+    meta = {
+        "count": len(rows),
+        "total_reported": total_reported,
+        "active_count": active_count,
+        "done_count": done_count,
+        "overdue_count": overdue_count,
+        "stage_map": stage_map,
+        "updated": datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M:%S"),
+        "source": "Base Workflow (API Song Song)",
     }
+
+    # Lưới an toàn cuối: nếu vẫn thiếu so với con số Base tự báo thì ghi
+    # cảnh báo vào meta — frontend hiện ngay trên thanh trạng thái.
+    if total_reported and len(rows) < total_reported:
+        meta["warning"] = ("Thiếu %d hồ sơ so với Base báo cáo (%d/%d) — nên đồng bộ lại."
+                           % (total_reported - len(rows), len(rows), total_reported))
+        print("  [parallel] ⚠ %s" % meta["warning"])
+
+    return {"headers": headers, "rows": rows, "meta": meta}
 
 
 _cache = {"ts": 0, "payload": None, "json_bytes": None, "gzip_bytes": None, "error": None, "is_fetching": False}
@@ -624,6 +697,11 @@ def main():
     print("  MÁY CHỦ EXECUTIVE BI DASHBOARD SIÊU TỐC - BÌNH QUỚI THANH ĐA")
     print("=" * 68)
 
+    if not ACCESS_TOKEN_V2:
+        print("  ⚠ %s" % TOKEN_MISSING_MSG.replace("\n", "\n  "))
+        print("  → Máy chủ vẫn chạy với dữ liệu trong cache_payload.json, nhưng KHÔNG đồng bộ được.")
+        print("-" * 68)
+
     # Nạp đĩa cache vào RAM ngay lập tức trước khi mở cổng HTTP
     disk_p = load_disk_cache()
     if disk_p:
@@ -644,6 +722,14 @@ def main():
 
     t_loop = threading.Thread(target=_bg_loop, daemon=True)
     t_loop.start()
+
+    # Đồng bộ NGAY khi khởi động: cổng vẫn mở tức thì (dashboard hiện số
+    # trong đĩa cache < 1ms), dữ liệu mới về sau vài chục giây rồi tự đẩy
+    # xuống trình duyệt qua SSE. Trước đây phải chờ đủ 30 phút hoặc bấm tay
+    # nút Đồng Bộ, nên mở máy ra hay thấy số của ngày hôm trước.
+    if disk_p:
+        threading.Thread(target=refresh_cache_in_background, daemon=True).start()
+        print("  ⚡ [ĐỒNG BỘ NGAY] Đang lấy dữ liệu mới nhất từ Base ở nền — trang tự cập nhật khi xong.")
 
     ip = get_lan_ip()
     print("-" * 68)
