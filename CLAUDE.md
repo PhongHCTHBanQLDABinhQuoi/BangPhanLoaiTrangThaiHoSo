@@ -472,7 +472,7 @@ Không có token thì `_post_base()` **ném lỗi kèm hướng dẫn**, `--sync
 1b. **Tải thiếu hồ sơ trong im lặng.** `fetch_page_worker` cũ chỉ thử lại **1 lần** rồi `return p_id, []` ⇒ một trang lỗi là **mất trắng 100 hồ sơ** mà `--sync` vẫn báo "SYNC OK" và vẫn ghi đè `cache_payload.json`. Thực tế đã dính: một lần đồng bộ chỉ lấy 2.141/2.241 hồ sơ. Nay: thử lại **3 lần** có giãn cách (0,6s → 1,2s), timeout tăng dần 40/55/70s, còn thiếu trang nào thì **ném lỗi** và **giữ nguyên file cũ**. Thêm `meta.warning` khi `count < total_reported` (frontend tự hiện trên thanh trạng thái).
 
 **Bug/nợ đã xác nhận khi đọc code:**
-2. **Modal timeline luôn hiện chữ "Bước"** thay vì tên giai đoạn — `app.js` đọc `m.sn`, nhưng `server.py:219` **không** ghi khoá `sn` (chỉ có `u,s,st,et,p,d`). Muốn sửa: map `m.s` → `stageMap[m.s]`. Biến `stageMap` đã được nạp nhưng **hiện chưa dùng ở đâu cả**.
+2. ✅ **Đã sửa 11/09/2026** — Modal timeline trước đây luôn hiện chữ "Bước" thay vì tên giai đoạn (đọc `m.sn` mà `server.py` không hề ghi khoá đó). Nay tra qua `stageNameOf(m.s)`. Đồng thời cột "Giữ" trước đây lấy `m.d` = **hạn SLA cấu hình sẵn**, nay đổi sang thời gian THỰC `et - st`.
 3. **`renderNote()` bị định nghĩa 2 lần** trong `app.js`. Bản sau thắng ⇒ bản đầu (hiện chip filter + nút bỏ lọc) là **code chết**.
 4. **`server.py` trùng định nghĩa**: `_cache` (dòng 64 & 300), `load_disk_cache` (68 & 345), `save_disk_cache` (81 & 358). Bản sau thắng — bản đầu là dư thừa, sửa nhớ sửa **bản dòng 300+**.
 5. **`renderLegalRiskTable` so sánh chuỗi thô** (`r[gcnIdx] === 'KHÔNG CÓ GCN'`) thay vì `normGCN()` ⇒ có thể đếm thiếu khi Base nhập biến thể khác. Các chỗ khác đều đã dùng `normGCN`.

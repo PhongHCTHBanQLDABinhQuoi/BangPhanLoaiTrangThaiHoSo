@@ -1817,11 +1817,18 @@ window.openDetail = function(rIdx){
         const moves = typeof r[movesIdx] === 'string' ? JSON.parse(r[movesIdx] || '[]') : (r[movesIdx] || []);
         if(moves.length){
           moves.forEach(m => {
-            const dtStr = m.st ? new Date(m.st * 1000).toLocaleString('vi') : '—';
-            const durDays = m.d ? (m.d / 86400).toFixed(1) + ' ngày' : '—';
+            /* Base KHÔNG trả khoá `sn` (tên giai đoạn) trong lịch sử chuyển
+               bước — chỉ có `s` = mã giai đoạn. Phải tra qua stageMap, nếu
+               không mọi dòng đều hiện trơ chữ "Bước". */
+            const stName = stageNameOf(m.s);
+            const dtStr = m.st ? new Date(parseInt(m.st, 10) * 1000).toLocaleString('vi') : '—';
+            /* `d` là hạn SLA cấu hình sẵn của giai đoạn, không phải thời gian
+               thực. Thời gian thực = et - st (xem mục 6.1 của CLAUDE.md). */
+            const st = parseInt(m.st, 10) || 0, et = parseInt(m.et, 10) || 0;
+            const held = (st > 0 && et > st) ? fmtDur(et - st) : (et ? '—' : 'đang ở bước này');
             tlHtml += `<li class="tl-item">
-              <div class="tl-title"><b>${escH(m.sn || 'Bước')}</b> · <small>${dtStr}</small></div>
-              <div class="tl-desc">Thực hiện: <b>${escH(m.u || 'Cán bộ')}</b> | Giữ: <b>${durDays}</b></div>
+              <div class="tl-title"><b>${escH(stName)}</b> · <small>${dtStr}</small></div>
+              <div class="tl-desc">Phụ trách: <b>${escH(auditUserLabel(m.u || 'Cán bộ'))}</b> | Giữ: <b>${escH(held)}</b></div>
             </li>`;
           });
         }
