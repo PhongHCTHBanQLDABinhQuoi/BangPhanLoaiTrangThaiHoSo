@@ -380,7 +380,8 @@ window.ReportEngine = (function () {
     } catch(e){ /* không có server → fallback bên dưới */ }
 
     if(!d || !d.headers || !d.rows || !d.rows.length){
-      const res2 = await fetch('cache_payload.json', { cache: force ? 'no-store' : 'default' });
+      /* Chống cache trình duyệt + CDN GitHub Pages — xem ghi chú ở app.js */
+      const res2 = await fetch('cache_payload.json?t=' + Date.now(), { cache: 'no-store' });
       if(res2.ok) d = await res2.json();
     }
 

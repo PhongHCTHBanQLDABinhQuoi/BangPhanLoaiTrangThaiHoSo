@@ -1890,7 +1890,12 @@ async function loadLive(force){
     } catch(e){}
 
     if(!d || !d.headers || !d.rows || d.rows.length === 0){
-      const resStatic = await fetch('cache_payload.json');
+      /* Chế độ GitHub Pages: không có server, đọc thẳng file tĩnh.
+         PHẢI chống cache: cả trình duyệt lẫn CDN của GitHub Pages đều giữ
+         bản cũ tới ~10 phút, nên bấm "Đồng Bộ" mà không có tham số thời
+         gian thì vẫn nhận đúng bản cũ và tưởng dữ liệu không cập nhật. */
+      const bust = 'cache_payload.json?t=' + Date.now();
+      const resStatic = await fetch(bust, { cache: 'no-store' });
       if(resStatic.ok) d = await resStatic.json();
     }
 
