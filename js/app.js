@@ -31,6 +31,7 @@ let tableQuery = '';
 let sortCol = -1;
 let sortAsc = true;
 let stageMap = {};
+let stageOrder = {};          // mã giai đoạn → thứ tự trong quy trình (Base trả về)
 let META = {};                 // meta của payload (nguồn, thời điểm cập nhật) — dùng khi xuất Excel
 let liveLoading = false;
 let autoTimer = null;
@@ -87,10 +88,11 @@ $$('.tab-btn').forEach(btn => {
 });
 
 /* ── Data Engine & Filtering ── */
-function applyData(hdrs, rws, stgMap){
+function applyData(hdrs, rws, stgMap, stgOrder){
   headers = hdrs.map(h => String(h).trim() || '(cột)');
   rows = (rws || []).map(r => headers.map((_, i) => String(r[i] ?? '').trim()));
   stageMap = stgMap || {};
+  stageOrder = stgOrder || {};
   enrichTeam();
   detectFilterCols();
   buildMoveLog();                // dựng nhật ký chuyển bước cho tab 7
@@ -1146,15 +1148,22 @@ function stageNameOf(id){
   return stageMap[k] || (k ? 'Bước ' + k : EMPTY);
 }
 
-function stageNumOf(name){
+/* Vị trí của giai đoạn trong quy trình.
+   Ưu tiên `stage_order` do Base trả về (meta.stage_order) — KHÔNG đoán theo
+   con số đầu tên giai đoạn, vì quy trình có 2 giai đoạn cùng đánh số "6."
+   ("6. Tổ Pháp Chế Kiểm Tra…" và "6. Chuyển phòng KTHT…"); đoán theo tên sẽ
+   báo nhầm là "chuyển lại cùng bước". Chỉ khi thiếu stage_order mới đoán. */
+function stageRank(id, name){
+  const o = stageOrder[String(id || '')];
+  if(o !== undefined && o !== null) return +o;
   const m = /^\s*(\d+)/.exec(String(name || ''));
   return m ? parseInt(m[1], 10) : NaN;
 }
 
-function moveDirOf(fromName, toName){
+function moveDirOf(fromId, toId, fromName, toName){
   if(toName === 'Failed') return 'fail';
   if(fromName === 'Failed') return 'reopen';
-  const a = stageNumOf(fromName), b = stageNumOf(toName);
+  const a = stageRank(fromId, fromName), b = stageRank(toId, toName);
   if(isNaN(a) || isNaN(b)) return 'fwd';
   if(b > a) return 'fwd';
   if(b < a) return 'back';
@@ -1243,12 +1252,14 @@ function buildMoveLog(){
       if(!(t > 0)) continue;
       const fromName = stageNameOf(a.s), toName = stageNameOf(b.s);
       moveLog.push({
-        t:    t,
-        by:   a.u || AUDIT_UNKNOWN,
-        recv: b.u || AUDIT_UNKNOWN,
-        from: fromName,
-        to:   toName,
-        dir:  moveDirOf(fromName, toName),
+        t:      t,
+        by:     a.u || AUDIT_UNKNOWN,
+        recv:   b.u || AUDIT_UNKNOWN,
+        from:   fromName,
+        to:     toName,
+        fromId: a.s,
+        toId:   b.s,
+        dir:    moveDirOf(a.s, b.s, fromName, toName),
         held: (a.st > 0 && t > a.st) ? (t - a.st) : 0,
         ri:   ri,
         row:  r,
@@ -1482,8 +1493,8 @@ function renderAudit(data){
   const SORTS = {
     t:    e => e.t,
     by:   e => removeAccents(e.by),
-    from: e => stageNumOf(e.from) || 99,
-    to:   e => stageNumOf(e.to) || 99,
+    from: e => { const r = stageRank(e.fromId, e.from); return isNaN(r) ? 999 : r; },
+    to:   e => { const r = stageRank(e.toId, e.to);   return isNaN(r) ? 999 : r; },
     recv: e => removeAccents(e.recv),
     held: e => e.held,
     name: e => removeAccents(e.name),
@@ -1842,7 +1853,7 @@ function tryLoadLocalCache(){
     if(raw){
       const d = JSON.parse(raw);
       if(d && d.headers && d.rows && d.rows.length > 0){
-        applyData(d.headers, d.rows, d.meta ? d.meta.stage_map : {});
+        applyData(d.headers, d.rows, d.meta ? d.meta.stage_map : {}, d.meta ? d.meta.stage_order : {});
         const fn = $('#fileName'); if(fn){ fn.textContent = '● TỨC THÌ (CACHE)'; fn.className = 'fbadge live'; }
         const s = fmtMeta(d); updateConn(true, '⚡ KẾT NỐI TỨC THÌ · ' + fmt(d.rows.length) + ' hồ sơ');
         const mi = $('#metaInfo'); if(mi) mi.textContent = s;
@@ -1882,7 +1893,7 @@ async function loadLive(force){
 
     try { localStorage.setItem('kpi_cache_v2', JSON.stringify(d)); } catch(e){}
 
-    applyData(d.headers, d.rows, d.meta ? d.meta.stage_map : {});
+    applyData(d.headers, d.rows, d.meta ? d.meta.stage_map : {}, d.meta ? d.meta.stage_order : {});
     const fn = $('#fileName'); if(fn){ fn.textContent = '● BASE LIVE'; fn.className = 'fbadge live'; }
     const s = fmtMeta(d);
     updateConn(true, '⚡ KẾT NỐI TRỰC TIẾP · ' + fmt(d.rows.length) + ' hồ sơ');

@@ -181,6 +181,22 @@ def fetch_all_jobs_parallel():
 
     total_items = int(first_page.get("total_items") or 0)
     items_per_page = int(first_page.get("items_per_page") or PAGE_LIMIT)
+
+    # Danh sách giai đoạn CHÍNH THỨC của quy trình, lấy từ khoá "workflow"
+    # của chính response. Đây là nguồn sự thật duy nhất về tên giai đoạn —
+    # xem ghi chú ở build_payload().
+    wf_stages = []
+    wf = first_page.get("workflow") or {}
+    for idx, st in enumerate(wf.get("stages") or []):
+        sid = str(st.get("id") or "")
+        if sid:
+            wf_stages.append({
+                "id": sid,
+                "name": st.get("name") or "",
+                "metatype": st.get("metatype") or "",
+                "order": idx,
+            })
+
     all_jobs_dict = {}
 
     page_0_jobs = first_page.get("jobs") or []
@@ -239,12 +255,12 @@ def fetch_all_jobs_parallel():
 
     sorted_keys = sorted(all_jobs_dict.keys())
     all_jobs = [all_jobs_dict[k] for k in sorted_keys]
-    return all_jobs, total_items
+    return all_jobs, total_items, wf_stages
 
 
 def build_payload():
     start_t = time.time()
-    all_jobs, total_reported = fetch_all_jobs_parallel()
+    all_jobs, total_reported, wf_stages = fetch_all_jobs_parallel()
     now_ts = time.time()
 
     custom_names = []
@@ -261,7 +277,19 @@ def build_payload():
     overdue_count = 0
     active_count = 0
     done_count = 0
+
+    # ── stage_map: NẠP TỪ DANH SÁCH GIAI ĐOẠN CỦA WORKFLOW ──────────────
+    # Trước đây stage_map chỉ được gom từ stage_export = giai đoạn HIỆN TẠI
+    # của từng hồ sơ. Giai đoạn nào đang không có hồ sơ nào đứng ở đó thì
+    # KHÔNG có tên, nên lịch sử chuyển bước hiện trơ mã số (116992, 116735,
+    # 117758...). Quy trình có 27 giai đoạn nhưng có lúc chỉ tra được 10.
+    # Nay lấy thẳng danh sách chính thức; stage_export chỉ còn là lưới an toàn.
     stage_map = {}
+    stage_order = {}
+    for st in wf_stages:
+        if st["name"]:
+            stage_map[st["id"]] = st["name"]
+        stage_order[st["id"]] = st["order"]
 
     for job in all_jobs:
         stage = job.get("stage_export") or {}
@@ -347,7 +375,8 @@ def build_payload():
         rows.append([str(x) if x is not None else "" for x in fixed] + custom)
 
     elapsed = time.time() - start_t
-    print("  [parallel] Đã nạp thành công %d hồ sơ trong %.2f giây" % (len(rows), elapsed))
+    print("  [parallel] Đã nạp thành công %d hồ sơ trong %.2f giây (quy trình %d giai đoạn)"
+          % (len(rows), elapsed, len(stage_map)))
 
     meta = {
         "count": len(rows),
@@ -356,6 +385,7 @@ def build_payload():
         "done_count": done_count,
         "overdue_count": overdue_count,
         "stage_map": stage_map,
+        "stage_order": stage_order,
         "updated": datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M:%S"),
         "source": "Base Workflow (API Song Song)",
     }

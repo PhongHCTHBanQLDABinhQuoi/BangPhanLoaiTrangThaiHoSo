@@ -8,7 +8,7 @@
 
 **Executive BI Dashboard 1 trang (SPA)** theo dõi & đánh giá KPI tiến độ xử lý **hồ sơ bồi thường – giải phóng mặt bằng** cho Dự án Khu đô thị mới **Bình Quới – Thanh Đa**, của **Ban QLDA ĐTXD phường Bình Quới**.
 
-- **Nguồn dữ liệu duy nhất:** Base Workflow (`workflow.base.vn`), workflow ID `16526` — quy trình 8 giai đoạn bồi thường.
+- **Nguồn dữ liệu duy nhất:** Base Workflow (`workflow.base.vn`), workflow ID `16526` — quy trình bồi thường **26 giai đoạn** (mở rộng từ 8 giai đoạn ban đầu; xem mục 4).
 - **Quy mô hiện tại:** ~2.225 hồ sơ, 40 cột dữ liệu, 3 tổ nghiệp vụ, ~80 cán bộ.
 - **Người dùng:** Ban Giám đốc + Phòng HCTH + 3 Tổ nghiệp vụ bồi thường. Hiển thị trên **màn hình wallboard 1024×768** và in báo cáo A4 ngang có chữ ký.
 - **Không có framework, không có build step.** Vanilla JS + Python stdlib thuần. Mở `index.html` là chạy.
@@ -106,7 +106,7 @@ Không có `package.json`, `requirements.txt`, test, linter. Python **stdlib thu
 |--:|---|---|
 | 0 | Job ID | |
 | 1 | Tên nhiệm vụ | Format `<STT>/KP<17\|18\|19>/BQLDA<tên hộ dân>` → **dùng để suy ra Tổ** |
-| 2 | Giai đoạn | 1 trong 8 giai đoạn (+ `Failed`) |
+| 2 | Giai đoạn | 1 trong 26 giai đoạn (gồm `Done`, `Failed`) |
 | 3 | Trạng thái | `active` / `done` / `finished` |
 | 4 | Người phụ trách | username Base, vd `phucvt` |
 | 5–6 | Ngày tạo / Cập nhật lần cuối | `dd/mm/yyyy HH:MM` |
@@ -125,11 +125,34 @@ Không có `package.json`, `requirements.txt`, test, linter. Python **stdlib thu
 
 **+1 cột do frontend tự thêm:** `Tổ/Phòng` (index 40) — xem 5.1.
 
-### 8 giai đoạn quy trình (`meta.stage_map`)
-1. Ban Hành TB Thu Hồi Đất · 2. Xác Minh, Kiểm Đếm · 3. Số Hóa, Hồ Sơ, Pháp Lý · 4. Kiểm Tra Bản Vẽ · 5. Nhận Định Hồ Sơ Pháp Lý · 6. Tổ Pháp Chế Kiểm Tra Nhận Định · 7. Chuyển phòng KTHT nhận định · 8. Phòng KTHTĐT đã có ý kiến (+ `Failed`)
+### Các giai đoạn quy trình (`meta.stage_map` + `meta.stage_order`)
+
+⚠️ **Quy trình KHÔNG còn 8 giai đoạn.** Base đã mở rộng lên **26 giai đoạn** (kiểm 11/09/2026). Hồ sơ thực tế mới chạy tới giai đoạn 9; từ 10 trở đi chưa có hồ sơ nào.
+
+| # | Mã | Tên giai đoạn |
+|--:|---|---|
+| 0 | `116730` | 1. Ban Hành TB Thu Hồi Đất |
+| 1 | `116731` | 2. Xác Minh, Kiểm Đếm |
+| 2 | `116732` | 3. Số Hóa, Hồ Sơ, Pháp Lý |
+| 3 | `116733` | 4. Kiểm Tra Bản Vẽ |
+| 4 | `116734` | 5. Nhận Định Hồ Sơ Pháp Lý |
+| 5 | `116992` | 6. Tổ Pháp Chế Kiểm Tra Nhận Định Hồ Sơ Pháp Lý |
+| 6 | `117748` | 7. Chuyển phòng KTHT nhận định Hồ Sơ |
+| 7 | `120424` | 7.1.1 Tổ Pháp Chế Kiểm Tra Nhận Định Hồ Sơ Pháp Lý |
+| 8 | `119938` | 7.1 P.KTHT Yêu cầu xác minh |
+| 9 | `119939` | 7.2 Tổ Công tác thống nhất nhận định |
+| 10 | `116735` | 8. Phòng KTHTĐT tham mưu UBND ký giấy xác nhận |
+| 11 | `117758` | 9. Dự Thảo Phương Án BT Chi Tiết |
+| 12–23 | `116993` … `116745` | 10 → 20 (chưa có hồ sơ) + *Hoàn chỉnh PABT, HT TĐC* |
+| 24 | `116728` | Done |
+| 25 | `116729` | Failed |
+
+**`stage_map` lấy từ đâu (quan trọng):** từ **`response['workflow']['stages']`** — danh sách giai đoạn chính thức của quy trình, trả về ngay trong mỗi lần gọi API. *Không* suy từ `stage_export` của từng hồ sơ nữa: `stage_export` chỉ cho biết giai đoạn **hiện tại** của hồ sơ, nên giai đoạn nào đang trống hồ sơ thì không có tên (xem mục 10). `stage_export` nay chỉ còn là lưới an toàn, ghi đè tên cho giai đoạn đang có hồ sơ đứng.
+
+**`meta.stage_order`** = `{mã giai đoạn: thứ tự trong quy trình}`. Dùng cái này để so bước trước/sau, **đừng đoán theo con số đầu tên giai đoạn** — quy trình có lúc tồn tại 2 giai đoạn cùng đánh số (`116992` và `117748` đều ghi "6." trong phần cài đặt quy trình trên Base, dù `stage_export` hiển thị "6." và "7.").
 
 ### `meta`
-`count`, `total_reported`, `active_count`, `done_count`, `overdue_count`, `stage_map`, `updated` (giờ VN), `source`.
+`count`, `total_reported`, `active_count`, `done_count`, `overdue_count`, `stage_map`, **`stage_order`**, `updated` (giờ VN), `source`, `warning` (chỉ khi thiếu hồ sơ).
 
 **⚠️ Cách truy cột trong app.js:** không hardcode index — dùng `ci('từ khoá')` (tìm header chứa keyword, lowercase) hoặc `headers.indexOf(TEAM_COL)`. Ví dụ: `ci('trạng thái sla')`, `ci('gcn')`, `ci('giai đoạn')`, `ci('pháp lý tặng')`.
 
@@ -441,6 +464,9 @@ Không có token thì `_post_base()` **ném lỗi kèm hướng dẫn**, `--sync
 **Bảo mật:**
 1. ✅ **Đã bỏ hardcode token khỏi `server.py`** (10/09/2026) — nay đọc từ env `BASE_ACCESS_TOKEN` hoặc `base_token.txt`. Xem mục 9.
    🔴 **NHƯNG token cũ vẫn nằm trong LỊCH SỬ GIT của repo PUBLIC** `PhongHCTHBanQLDABinhQuoi/BangPhanLoaiTrangThaiHoSo` — ai xem commit cũ vẫn lấy được. **Bắt buộc phải REVOKE token cũ trên Base**, đổi code không cứu được. Cân nhắc chuyển repo sang Private.
+
+**Đã sửa (11/09/2026):**
+0. **`stage_map` thiếu tên giai đoạn ⇒ giao diện hiện trơ mã số.** `stage_map` cũ chỉ gom từ `stage_export` = giai đoạn **hiện tại** của từng hồ sơ, nên giai đoạn nào đang không có hồ sơ nào đứng ở đó thì **không có tên**. Quy trình 26 giai đoạn mà chỉ tra được 10; bộ lọc tab 7 hiện `116992`, `116735`, `117758`. Nặng hơn: `moveDirOf` đoán thứ tự bằng con số đầu tên giai đoạn, gặp tên `Bước 116992` thì `parseInt` ra `NaN` và **mặc định coi là "chuyển tiếp"** ⇒ **874/15.057 lượt bị gán sai hướng, trong đó 697 lượt thực ra là TRẢ VỀ nhưng bị ghi là chuyển tiếp**. Nay `stage_map` lấy từ `workflow.stages` và thứ tự lấy từ `meta.stage_order`.
 
 **Đã sửa (10/09/2026):**
 1b. **Tải thiếu hồ sơ trong im lặng.** `fetch_page_worker` cũ chỉ thử lại **1 lần** rồi `return p_id, []` ⇒ một trang lỗi là **mất trắng 100 hồ sơ** mà `--sync` vẫn báo "SYNC OK" và vẫn ghi đè `cache_payload.json`. Thực tế đã dính: một lần đồng bộ chỉ lấy 2.141/2.241 hồ sơ. Nay: thử lại **3 lần** có giãn cách (0,6s → 1,2s), timeout tăng dần 40/55/70s, còn thiếu trang nào thì **ném lỗi** và **giữ nguyên file cũ**. Thêm `meta.warning` khi `count < total_reported` (frontend tự hiện trên thanh trạng thái).
